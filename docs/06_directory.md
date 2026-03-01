@@ -1,6 +1,3 @@
-# 🧭 機能一覧テンプレート
-
----
 # 📁 ディレクトリ構成図
 
 ---
@@ -9,275 +6,159 @@
 
 | 項目      | 内容                                 |
 | ------- | ---------------------------------- |
-| リポジトリ構成 | Monorepo / Polyrepo                |
-| アーキテクチャ | Layered / Clean Architecture / DDD |
-| デプロイ単位  | 単一サービス / マイクロサービス                  |
-| 言語      | 任意（TypeScript / Go / Python 等）     |
+| リポジトリ構成 | Monorepo（単一リポジトリ）                   |
+| アーキテクチャ | Next.js App Router（Feature分割）        |
+| デプロイ単位  | 単一サービス（フロントエンド＋APIルート一体型）           |
+| 言語      | TypeScript                         |
 | MVP方針   | P0に必要なディレクトリのみ                     |
 
 ---
 
-# 1️⃣ 全体構成（Monorepo想定）
+# 1️⃣ 全体構成
 
-```id="o8d9si"
-root/
-├── apps/              # 実行可能アプリ
-│   ├── web/
-│   ├── api/
-│   └── admin/
-├── packages/          # 共有パッケージ
-│   ├── ui/
-│   ├── domain/
-│   ├── config/
-│   └── utils/
-├── infra/             # IaC / Terraform / Docker
-├── scripts/           # 補助スクリプト
+```
+Jyogi_SNS/
+├── src/               # アプリケーションソース
+├── public/            # 静的ファイル（画像・PWA関連）
 ├── docs/              # 設計書
-└── README.md
+├── next.config.ts     # Next.js設定
+├── package.json       # 依存パッケージ管理
+├── eslint.config.mjs  # ESLintルール設定
+├── postcss.config.mjs # PostCSS設定（Tailwind等）
+├── .nvmrc             # Node.jsバージョン固定
+└── README.md          # プロジェクト概要
 ```
 
 ---
 
-# 2️⃣ フロントエンド構成テンプレ
+# 2️⃣ フロントエンド構成（Next.js App Router）
 
-```id="tq93md"
-apps/web/
-├── src/
-│   ├── app/           # ルーティング層
-│   ├── features/      # 機能単位モジュール
-│   ├── components/    # 共通UI
-│   ├── hooks/
-│   ├── lib/           # APIクライアント等
-│   ├── stores/        # 状態管理
-│   └── types/
-├── public/
-└── tests/
 ```
-
----
-
-## Featureベース構成（推奨）
-
-```id="t6lm52"
-features/
-├── auth/
-│   ├── components/
-│   ├── api.ts
-│   ├── hooks.ts
-│   └── types.ts
-├── entity/
-│   ├── components/
-│   ├── api.ts
-│   ├── hooks.ts
-│   └── types.ts
-```
-
----
-
-# 3️⃣ バックエンド構成テンプレ（Clean Architecture）
-
-```id="9wh13c"
-apps/api/
-├── cmd/                # エントリポイント
-├── internal/
-│   ├── domain/         # エンティティ・ビジネスルール
-│   ├── usecase/        # アプリケーションロジック
-│   ├── repository/     # DB抽象
-│   ├── handler/        # HTTP層
-│   ├── middleware/
-│   └── config/
-├── migrations/
-└── tests/
-```
-
----
-
-# 4️⃣ DDDベース構成テンプレ
-
-```id="kl2m91"
 src/
-├── modules/
-│   ├── user/
-│   │   ├── domain/
-│   │   ├── application/
-│   │   ├── infrastructure/
-│   │   └── presentation/
-│   ├── organization/
-│   └── core/
+├── app/               # ルーティング層（App Router）
+│   ├── layout.tsx     # グローバルレイアウト
+│   ├── page.tsx       # ホーム（タイムライン）
+│   ├── globals.css    # グローバルスタイル
+│   ├── favicon.ico    # ファビコン
+│   │
+│   ├── auth/          # 認証関連ページ
+│   │   ├── login/             # ログインページ
+│   │   ├── signup/            # 新規登録ページ
+│   │   ├── reset-password/    # パスワードリセット
+│   │   └── verify/            # メール認証確認
+│   │
+│   ├── profile/       # プロフィールページ
+│   │   ├── page.tsx           # 自分のプロフィール
+│   │   └── [userId]/          # 他ユーザーのプロフィール
+│   │
+│   ├── messages/      # DM・メッセージ
+│   │   ├── page.tsx           # DM一覧
+│   │   └── [userId]/          # 個別チャット
+│   │
+│   ├── tutorial/      # チュートリアル
+│   │   ├── page.tsx           # チュートリアル本体
+│   │   └── complete/
+│   │       └── page.tsx       # 完了ページ
+│   │
+│   ├── notifications/ # 通知ページ
+│   ├── bookmarks/     # ブックマーク
+│   ├── search/        # 検索
+│   ├── reactions/     # リアクション一覧
+│   ├── settings/      # 設定
+│   ├── gallery/       # 画像ギャラリー
+│   │   ├── DbImage.tsx        # DB画像取得コンポーネント
+│   │   └── GalleryClient.tsx  # ギャラリークライアントコンポーネント
+│   │
+│   ├── realction/     # スタンプ機能（カスタムリアクション）
+│   │   └── fonts.ts           # スタンプ用フォント定義
+│   │
+│   └── api/           # APIルート（Next.js Route Handlers）
+│       ├── realction/[id]/    # スタンプリアクション（投稿IDで絞り込み）
+│       ├── send-notification/ # プッシュ通知送信
+│       ├── send-like-notification/ # いいね通知送信
+│       ├── upload/            # 投稿画像アップロード
+│       ├── upload-icon/       # アイコン画像アップロード
+│       ├── upload-reaction/   # リアクション画像アップロード
+│       ├── vapid-public-key/  # Web Push公開鍵の配信
+│
+├── components/        # 共通UIコンポーネント
+│   ├── Post.tsx               # 投稿カード
+│   ├── PostForm.tsx           # 投稿フォーム
+│   ├── Sidebar.tsx            # サイドバーナビゲーション（PC）
+│   ├── MobileNavigation.tsx   # モバイルナビ（下部タブバー）
+│   ├── MobileExtendedNavigation.tsx  # モバイル拡張ナビ
+│   ├── Message.tsx            # メッセージアイテム
+│   ├── MessageListItem.tsx    # DM一覧の行コンポーネント
+│   ├── Notification.tsx       # 通知アイテム
+│   ├── NotificationSettings.tsx      # 通知設定UI
+│   ├── ProtectedRoute.tsx     # 認証ガード（未ログイン時リダイレクト）
+│   ├── AuthLoadingFallback.tsx       # 認証確認中のフォールバック表示
+│   ├── LoadingScreen.tsx      # ローディング画面
+│   ├── LoadingScreenWrapper.tsx      # ローディング制御ラッパー
+│   ├── WebcamUploader.tsx     # カメラ撮影・アップロード
+│   ├── PWAInstaller.tsx       # PWAインストール促進UI
+│   └── ServiceWorkerRegistration.tsx # Service Worker登録処理
+│
+├── contexts/          # Reactコンテキスト
+│   └── AuthContext.tsx        # 認証状態管理
+│
+├── hooks/             # 共通カスタムフック
+│   └── usePushNotifications.ts       # Web Pushの購読・解除フック
+│
+├── lib/               # 外部サービスクライアント
+│   ├── supabase/
+│   │   └── client.ts          # Supabaseクライアント
+│   └── tikuribar/
+│       └── websocketServer.ts # WebSocketサーバー
+│
+├── utils/             # ユーティリティ
+│   └── supabase/
+│       ├── client.ts          # ブラウザ用Supabaseクライアント
+│       └── server.ts          # サーバー用Supabaseクライアント
+│
+├── data/              # モックデータ
+│   ├── mockData.ts            # 投稿・ユーザーのモックデータ
+│   ├── mockMessageData.ts     # DMのモックデータ
+│   └── mockNotificationData.ts # 通知のモックデータ
+│
+├── scripts/           # スクリプト
+│   └── startTikuriBarServer.ts # TikuriBarのWebSocketサーバー起動スクリプト
+│
+└── types/             # 型定義
+    ├── index.ts               # 共通型定義（ユーザー・投稿等）
+    ├── post.ts                # 投稿関連の型定義
+    ├── stanp.ts               # スタンプ関連の型定義
+    └── tutorial.ts            # チュートリアルのステップ型定義
 ```
 
 ---
 
-# 5️⃣ マイクロサービス構成
+# 3️⃣ 静的ファイル構成
 
-```id="0b5zvx"
-services/
-├── auth-service/
-├── core-service/
-├── notification-service/
-└── gateway/
+```
+public/
+├── Tikuru24logo.png           # ロゴ
+├── manifest.json              # PWAマニフェスト
+├── sw.js                      # Service Worker
+├── android-launchericon-*.png # PWAアイコン各サイズ
+├── canvas.html / .css / .js   # キャンバス機能
+└── *.svg                      # SVGアイコン
 ```
 
 ---
 
-# 6️⃣ インフラ構成
+# 4️⃣ ドキュメント構成
 
-```id="v9k0mz"
-infra/
-├── terraform/
-│   ├── modules/
-│   └── environments/
-│       ├── dev/
-│       ├── staging/
-│       └── prod/
-├── docker/
-└── ci/
 ```
-
----
-
-# 7️⃣ ドキュメント構成
-
-```id="az1k93"
 docs/
-├── 01_feature-list.md
-├── 02_db-design.md
-├── 03_screen-flow.md
-├── 04_permission-design.md
-├── 05_api-spec.md
-└── 06_directory.md
+├── 01_feature-list_md.md      # 機能一覧
+├── 03_screen-flow_md.md       # 画面遷移図
+├── 04_permission-design.md    # 権限設計
+├── 05_erd.md                  # ERD
+├── 06_directory.md            # ディレクトリ構成（本ファイル）
+├── 07_infrastructure.md       # インフラ構成
+├── 08_logging.md              # ログ設計
+├── 09_schedule_and_issues_md.md # スケジュール・課題管理
+├── stanp_table_design.md      # スタンプテーブル設計
+└── create_tables.sql          # テーブル作成SQL
 ```
-
----
-
-# 8️⃣ テスト構成テンプレ
-
-```id="c32po1"
-tests/
-├── unit/
-├── integration/
-├── e2e/
-└── fixtures/
-```
-
----
-
-# 9⃣ 状態管理分離パターン（FE）
-
-```id="8t1k4d"
-stores/
-├── auth.store.ts
-├── entity.store.ts
-└── ui.store.ts
-```
-
----
-
-# 11️⃣ API設計分離パターン
-
-```id="nb29df"
-api/
-├── client.ts
-├── endpoints/
-│   ├── auth.ts
-│   ├── entities.ts
-│   └── users.ts
-```
-
-## 0️⃣ 前提定義（最初に決める）
-
-| 項目     | 内容                    |
-| ------ | --------------------- |
-| 対象ユーザー | じょぎ部員 |
-| 提供価値   | discordの制限が多い <br>スタンプの個数制限問題<br>チャットログの高度検索がない|
-| コア体験   | （ユーザーが最も頻繁に行う行動）      |
-| 成功指標   | じょぎ部員10人以上がdiscordのtimesから移行する            |
-
----
-
-# 1️⃣ 機能カテゴリ設計（自由定義）
-
-> ※カテゴリはプロダクトに応じて自由に再設計する
-> 例：アカウント / 管理 / コア機能 / 可視化 / 連携 / 運用 など
-
----
-
-## 【カテゴリA：スタンプ機能】
-
-| #   | 機能名 | 概要 | ユーザー価値 | 優先度   | 備考 |
-| --- | --- | -- | ------ | ----- | -- |
-| A-1 |画像保存    |ユーザーがスタンプにしたい画像をr2で保存    | スタンプにしたい画像を保存できる       | 🔴 P0 |    |
-| A-2 | r2の保存制限ロジック    | r2の無料分である10GBの制限を超えないように   | 部費を運営に回さなくて良い       | 🟡 P1 |    |
-| A-3 |保存するファイル圧縮     |r2の無料分で扱うには、保存量の制限がネックになってくるのでより保存できるようにするためのロジック作成    |沢山画像を保存できる        | 🟢 P2 |    |
-| A-4 |パブリック開発URLを署名付きURLにして保護する    |   パブリック開発URLが漏れた時のためのリスク回避 | 安心してスタンプを保存することができる       | ⚪ P3  |    |
-
----
-
-## 【カテゴリB：検索系ロジック】
-
-| #   | 機能名 | 概要 | ユーザー価値 | 優先度   | 備考 |
-| --- | --- | -- | ------ | ----- | -- |
-| B-1 |     |    |        | 🔴 P0 |    |
-| B-2 |正規表現による検索機能実装     | discodeにはできない正規表現パターンによる検索を可能にしたい   | 'p+l'で検索すると、'apple'や'pineapple'がマッチするようになり過去の発言を探しやすい       | 🟡 P1 |    |
-| B-3 |     |    |        | 🟢 P2 |    |
-| B-4 |     |    |        | ⚪ P3  |    |
-
----
-
-## 【カテゴリC：マップ機能(大学周辺のおすすめスポットを共有)】
-
-| #   | 機能名 | 概要 | ユーザー価値 | 優先度   | 備考 |
-| --- | --- | -- | ------ | ----- | -- |
-| C-1 |経路案内|ユーザーがスポット登録する際にGoogleMapのURLを添付する|        | 🔴 P0 |    |
-| C-2 |　　　|　　　|　　　　| 🟡 P1 |    |
-| C-3 |     |    |        | 🟢 P2 |    |
-| C-4 |     |    |        | ⚪ P3  |    |
-
-## 【カテゴリD：成果物紹介ch】
-
-| #   | 機能名 | 概要 | ユーザー価値 | 優先度   | 備考 |
-| --- | --- | -- | ------ | ----- | -- |
-| C-1 |成果物紹介ch|通常チャット場所とは分けて成果物を表示|見やすい、反応しやすい| 🔴 P0 |    |
-| C-2 |リスト表示|ユーザー毎に成果物を表示|簡易ポートフォリオになる| 🟡 P1 |    |
-| C-3 |     |    |        | 🟢 P2 |    |
-| C-4 |成果物紹介用入力フォーム|通常の投稿フォームとは別に専用の入力欄を設ける|入力が楽、使用技術別で検索等ができる| ⚪ P3  |    |
----
-
-# 2️⃣ 優先順位の定義基準（共通ルール）
-
-| 優先度   | 判断基準              |
-| ----- | ----------------- |
-| 🔴 P0 | これがないとプロダクトが成立しない |
-| 🟡 P1 | 体験を大きく向上させる       |
-| 🟢 P2 | 運用効率・継続率を改善する     |
-| ⚪ P3  | 将来の拡張性・差別化        |
-
----
-
-# 3️⃣ フェーズ整理テンプレート
-
-```text
-【Phase 0 - MVP】
-🔴 P0のみ実装
-
-【Phase 1 - 体験向上】
-🟡 P1追加
-
-【Phase 2 - 安定化】
-🟢 P2追加
-
-【Phase 3 - 拡張】
-⚪ P3追加
-```
-
----
-
-# 4️⃣ 機能数サマリー
-
-| 優先度   | 機能数 | 割合 |
-| ----- | --- | -- |
-| 🔴 P0 |     |    |
-| 🟡 P1 |     |    |
-| 🟢 P2 |     |    |
-| ⚪ P3  |     |    |
-| 合計    |     |    |
