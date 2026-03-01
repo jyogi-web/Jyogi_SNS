@@ -70,23 +70,7 @@ src/
 │   │   └── GalleryClient.tsx  # ギャラリークライアントコンポーネント
 │   │
 │   ├── realction/     # スタンプ機能（カスタムリアクション）
-│   │   └── fonts.ts
-│   │
-│   ├── post/       # 投稿機能
-│   │   ├── components/
-│   │   │   ├── CommentSection.tsx # コメント表示・入力
-│   │   │   ├── ListView.tsx       # 投稿リスト表示
-│   │   │   ├── MapView.tsx        # 地図表示
-│   │   │   ├── Header.tsx  # ヘッダー
-│   │   │   └── PostForm.tsx # 天気投稿フォーム
-│   │   ├── hooks/
-│   │   │   └── usePosts.ts # 天気投稿データ取得フック
-│   │   ├── data/
-│   │   │   └── mockData.ts        # 開発用モックデータ
-│   │   ├── utils/
-│   │   │   ├── helpers.ts         # ユーティリティ関数
-│   │   │   └── supabase.ts        # 天気機能用Supabaseクエリ
-│   │   └── types.ts               # 天気機能の型定義
+│   │   └── fonts.ts           # スタンプ用フォント定義
 │   │
 │   └── api/           # APIルート（Next.js Route Handlers）
 │       ├── realction/[id]/    # スタンプリアクション（投稿IDで絞り込み）
