@@ -12,6 +12,7 @@
 | 地図         | Google Maps API                 |
 | プッシュ通知     | Web Push（VAPID）                  |
 | リアルタイム通信   | WebSocket（ws）/ Supabase Realtime |
+| アーカイブ先     | Raspberry Pi（ローカルストレージ）         |
 
 ---
 
@@ -74,6 +75,14 @@ flowchart LR
     end
 
     %% =======================
+    %% Backup Layer
+    %% =======================
+    subgraph BACKUP["Backup Layer"]
+        BACKUP_WORKER["バックアップワーカー<br/>(容量監視 / エクスポート / 暗号化)"]:::backup
+        PI["Raspberry Pi<br/>(アーカイブ先)"]:::backup
+    end
+
+    %% =======================
     %% 接続
     %% =======================
     BROWSER --> EDGE
@@ -87,6 +96,9 @@ flowchart LR
     BROWSER --> MAPS
     BROWSER --> REALTIME
     AUTH --> PGDB
+    PGDB -.->|容量監視 / JSON エクスポート| BACKUP_WORKER
+    R2 -.->|GetObjectCommand| BACKUP_WORKER
+    BACKUP_WORKER -.->|scp / rsync over SSH| PI
 
     %% =======================
     %% Class Definitions
@@ -98,6 +110,7 @@ flowchart LR
     classDef db fill:#f5faff,stroke:#2b6cb0,color:#0a2a4a;
     classDef data fill:#fff0fb,stroke:#b1008a,color:#4a0040;
     classDef ext fill:#f3f0ff,stroke:#7c3aed,color:#2e1065;
+    classDef backup fill:#f0fdf4,stroke:#16a34a,color:#14532d;
 ```
 
 ---
@@ -184,6 +197,26 @@ flowchart LR
 
 ---
 
+## バックアップワーカー / Raspberry Pi
+
+> DB / R2 の使用容量が閾値を超えた場合のみ起動するサーバーサイドのバックアップ処理。
+
+| 項目          | 内容                                                   |
+| ----------- | ---------------------------------------------------- |
+| 実行場所        | サーバーサイドスクリプト（Next.js とは独立したワーカー）                     |
+| トリガー        | 毎週 cron で容量チェック → `BACKUP_DB_THRESHOLD_PCT` / `BACKUP_R2_THRESHOLD_GB` 超過時のみ起動 |
+| DB 抽出       | Supabase JS Client で対象テーブルを SELECT（`created_at` 期間フィルタ付き）→ JSON |
+| 画像取得        | `@aws-sdk/client-s3` — `GetObjectCommand` でストリームダウンロード |
+| パッケージ化      | `tar -czf` で圧縮                                       |
+| 暗号化         | `gpg --symmetric --cipher-algo AES256`               |
+| チェックサム      | `sha256sum` で整合性検証ファイル生成                             |
+| 転送          | `scp` / `rsync --partial` over SSH で Pi へ送信          |
+| アーカイブ後削除    | Pi 側チェックサム検証成功後に Supabase / R2 の対象データを削除して容量解放       |
+| 通知          | 成功・失敗を Discord Webhook 等へ通知                          |
+| アーカイブ先（Pi） | Raspberry Pi のローカルストレージ（SSH 公開鍵認証）                   |
+
+---
+
 # 3️⃣ データフロー
 
 ## 投稿フロー
@@ -216,6 +249,25 @@ flowchart LR
   → プッシュ通知表示
 ```
 
+## バックアップ / アーカイブフロー
+
+```
+毎週 cron 実行
+  → pg_database_size() / R2 List API で使用量取得
+  → 閾値未満 → スキップ（次回チェックへ）
+  → 閾値超過 → バックアップワーカー起動
+      → Supabase から対象テーブルを SELECT → JSON ファイル化
+      → R2 から対象画像を GetObjectCommand でダウンロード
+      → tar -czf でパッケージ化
+      → gpg --symmetric (AES256) で暗号化
+      → sha256sum でチェックサム生成
+      → scp / rsync over SSH で Raspberry Pi へ転送
+      → Pi 側チェックサム検証
+      → 検証 OK → Supabase / R2 の対象データ削除（容量解放）
+      → 検証 NG → 削除スキップ・エラー通知
+      → Discord Webhook で成否を通知
+```
+
 ---
 
 # 4️⃣ 環境変数一覧（必要なもの）
@@ -232,4 +284,10 @@ flowchart LR
 | `GOOGLE_MAPS_API_KEY`      | Google Maps APIキー   |
 | `VAPID_PUBLIC_KEY`         | Web Push 公開鍵        |
 | `VAPID_PRIVATE_KEY`        | Web Push 秘密鍵        |
+| `BACKUP_DB_THRESHOLD_PCT`  | DB 容量監視の閾値（使用率 %） |
+| `BACKUP_R2_THRESHOLD_GB`   | R2 容量監視の閾値（GB）    |
+| `PI_SSH_HOST`              | Raspberry Pi のホスト名 / IP |
+| `PI_SSH_USER`              | Pi への SSH ユーザー名    |
+| `PI_BACKUP_PATH`           | Pi 側のバックアップ保存先パス |
+| `GPG_PASSPHRASE`           | GPG 対称暗号化パスフレーズ   |
 
