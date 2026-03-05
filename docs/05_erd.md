@@ -632,7 +632,7 @@ erDiagram
 | entity_id    | UUID        | 紐づくリソースID（todos.id 等）         |
 | entity_type  | TEXT        | 'post' / 'user' 等              |
 | content_type | TEXT        | 'title' / 'body' / 'tags' 等    |
-| embedding    | VECTOR(768) | テキスト埋め込みベクトル（Gemini等）          |
+| embedding    | VECTOR(768) | テキスト埋め込みベクトル                   |
 | metadata     | JSONB       | フィルタ用属性（user_id, tags, status） |
 | model_name   | TEXT        | 使用モデル名（例: `text-embedding-004`） |
 | created_at   | TIMESTAMPTZ | 生成日時                           |
@@ -687,7 +687,7 @@ LIMIT 10;
 
 | 戦略       | 対象          | 説明                      |
 | -------- | ----------- | ----------------------- |
-| 非同期キュー   | todos 新規投稿時 | 投稿保存 → Job → Gemini API → 挿入 |
+| 非同期キュー   | todos 新規投稿時 | 投稿保存 → Job → 埋め込み生成 → 挿入       |
 | 再生成バッチ   | モデル変更時      | 全 embeddings を一括再生成       |
 | TTL連動削除  | todos 削除時   | CASCADE or バッチで embeddings も削除 |
 
