@@ -51,7 +51,7 @@ export async function GET() {
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "failed to get storage info" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     if (!file || !userId) {
       return NextResponse.json(
         { error: "file and userId required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
         { error: "ファイルサイズは5MB以下にしてください" },
-        { status: 413 }
+        { status: 413 },
       );
     }
 
@@ -83,12 +83,15 @@ export async function POST(req: NextRequest) {
     if (totalBytes + file.size > MAX_STORAGE_BYTES) {
       return NextResponse.json(
         { error: "ストレージ容量が上限（10GB）に達しています" },
-        { status: 507 }
+        { status: 507 },
       );
     }
 
     const now = new Date();
-    const ymd = now.toISOString().replace(/[-:T.]/g, "").slice(0, 14);
+    const ymd = now
+      .toISOString()
+      .replace(/[-:T.]/g, "")
+      .slice(0, 14);
     const key = `stamps/${userId}_${ymd}.jpg`;
 
     const arrayBuffer = await file.arrayBuffer();
@@ -98,7 +101,7 @@ export async function POST(req: NextRequest) {
         Key: key,
         Body: Buffer.from(arrayBuffer),
         ContentType: "image/jpeg",
-      })
+      }),
     );
 
     const imageUrl = `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${key}`;
@@ -106,7 +109,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "upload failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
