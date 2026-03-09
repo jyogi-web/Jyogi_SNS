@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "JyogiSNS",
-  description: "JyogiSNS - 瞬間で繋がるSNS",
+  description: "JyogiSNS - 瞬間で繋がるSNS ",
   manifest: "/manifest.json",
   themeColor: "#000000",
   viewport:
