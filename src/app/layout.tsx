@@ -7,7 +7,7 @@ import LoadingScreenWrapper from "@/components/LoadingScreenWrapper";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "JyogiSNS",
+  title: "Jyogi_SNS",
   description: "JyogiSNS - 瞬間で繋がるSNS",
   manifest: "/manifest.json",
   themeColor: "#000000",
