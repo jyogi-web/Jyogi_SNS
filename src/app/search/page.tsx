@@ -64,6 +64,7 @@ export default function SearchPage() {
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
   const [isRegexMode, setIsRegexMode] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
   const [regexError, setRegexError] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 
@@ -358,7 +359,7 @@ export default function SearchPage() {
   }, [todos]);
 
   useEffect(() => {
-    if (!searchQuery) {
+    if (!searchQuery && !tagQuery) {
       setFilteredTodos([]);
       setRegexError(null);
       return;
@@ -377,15 +378,17 @@ export default function SearchPage() {
       return;
     }
 
-    // 正規表現モード: サーバーサイド API で検索（300ms デバウンス）
+    // 正規表現モード: サーバーサイド API で検索（800ms デバウンス）
     const controller = new AbortController();
     setIsSearchLoading(true);
     setRegexError(null);
 
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
-        signal: controller.signal,
-      })
+      const url = new URL("/api/search", window.location.origin);
+      if (searchQuery) url.searchParams.set("q", searchQuery);
+      if (tagQuery) url.searchParams.set("tag", tagQuery);
+
+      fetch(url.toString(), { signal: controller.signal })
         .then(async (res) => {
           const data = await res.json();
           if (!res.ok) {
@@ -415,7 +418,7 @@ export default function SearchPage() {
       controller.abort();
       setIsSearchLoading(false);
     };
-  }, [searchQuery, todos, isRegexMode]);
+  }, [searchQuery, tagQuery, todos, isRegexMode]);
 
   useEffect(() => {
     if (!userId) return;
@@ -555,6 +558,7 @@ export default function SearchPage() {
                   onClick={() => {
                     setIsRegexMode((prev) => !prev);
                     setRegexError(null);
+                    setTagQuery("");
                   }}
                   title={isRegexMode ? "正規表現モードON" : "正規表現モードOFF"}
                   className={`flex-shrink-0 px-3 py-2 rounded-lg border font-mono text-sm font-bold transition-colors ${
@@ -566,11 +570,37 @@ export default function SearchPage() {
                   .*
                 </button>
               </div>
+
+              {/* タグ絞り込み（正規表現モード時のみ表示） */}
+              {isRegexMode && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-blue-400 font-bold text-sm pl-1">#</span>
+                  <input
+                    type="text"
+                    placeholder="タグで絞り込み (例: 検索)"
+                    value={tagQuery}
+                    onChange={(e) => {
+                      setTagQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className="flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                  {tagQuery && (
+                    <button
+                      onClick={() => setTagQuery("")}
+                      className="text-gray-500 hover:text-gray-300 text-xs px-2"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+
               {regexError && (
                 <p className="mt-2 text-sm text-red-400 pl-1">{regexError}</p>
               )}
               {isRegexMode && !regexError && (
-                <p className="mt-2 text-xs text-blue-400 pl-1">正規表現モード: パターンで投稿を検索します</p>
+                <p className="mt-2 text-xs text-blue-400 pl-1">正規表現モード: titleにregex & #タグにAND絞り込み</p>
               )}
             </div>
 

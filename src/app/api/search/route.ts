@@ -13,29 +13,33 @@ type Todo = {
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
+  const tag = searchParams.get("tag") ?? "";
 
-  if (!q) {
+  if (!q && !tag) {
     return NextResponse.json(
-      { error: "missing_query", message: "q パラメータが必要です" },
+      { error: "missing_query", message: "q または tag パラメータが必要です" },
       { status: 400 }
     );
   }
 
-  if (q.length > 200) {
+  if (q.length > 200 || tag.length > 200) {
     return NextResponse.json(
       { error: "query_too_long", message: "検索パターンは200文字以内にしてください" },
       { status: 400 }
     );
   }
 
-  let regex: RegExp;
-  try {
-    regex = new RegExp(q, "i");
-  } catch {
-    return NextResponse.json(
-      { error: "invalid_regex", message: "無効な正規表現パターンです" },
-      { status: 400 }
-    );
+  // q が指定されている場合のみ正規表現をコンパイル
+  let regex: RegExp | null = null;
+  if (q) {
+    try {
+      regex = new RegExp(q, "i");
+    } catch {
+      return NextResponse.json(
+        { error: "invalid_regex", message: "無効な正規表現パターンです" },
+        { status: 400 }
+      );
+    }
   }
 
   const { data, error } = await supabaseAdmin
@@ -51,11 +55,22 @@ export async function GET(req: NextRequest) {
 
   const todos: Todo[] = data ?? [];
 
-  const results = todos.filter(
-    (todo) =>
+  const tagLower = tag.toLowerCase();
+
+  const results = todos.filter((todo) => {
+    // q が指定されていれば title または tags に regex マッチ
+    const matchesQ =
+      !regex ||
       regex.test(todo.title) ||
-      (todo.tags ?? []).some((tag) => regex.test(tag))
-  );
+      (todo.tags ?? []).some((t) => regex!.test(t));
+
+    // tag が指定されていれば tags[] に部分一致（AND 条件）
+    const matchesTag =
+      !tag ||
+      (todo.tags ?? []).some((t) => t.toLowerCase().includes(tagLower));
+
+    return matchesQ && matchesTag;
+  });
 
   return NextResponse.json({ results, total: results.length });
 }
