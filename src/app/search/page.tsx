@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import { supabase } from "@/utils/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
@@ -53,6 +53,7 @@ type NewsArticle = {
 
 export default function SearchPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("recommended");
   const [searchQuery, setSearchQuery] = useState("");
@@ -64,9 +65,18 @@ export default function SearchPage() {
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
   const [isRegexMode, setIsRegexMode] = useState(false);
-  const [tagQuery, setTagQuery] = useState("");
+  const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
   const [regexError, setRegexError] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+
+  // URLのtagパラメータが変わったら同期
+  useEffect(() => {
+    const tag = searchParams.get("tag");
+    if (tag !== null) {
+      setTagQuery(tag);
+      setActiveTab("search");
+    }
+  }, [searchParams]);
 
   // TikuriBar関連の状態
   const [tikuriBars, setTikuriBars] = useState<BarRoom[]>([]);
@@ -367,13 +377,19 @@ export default function SearchPage() {
 
     if (!isRegexMode) {
       const q = searchQuery.toLowerCase();
+      const tq = tagQuery.toLowerCase();
       setRegexError(null);
       setFilteredTodos(
-        todos.filter(
-          (todo) =>
+        todos.filter((todo) => {
+          const matchesQuery =
+            !q ||
             todo.title.toLowerCase().includes(q) ||
-            (todo.tags || []).some((tag) => tag.toLowerCase().includes(q)),
-        ),
+            (todo.tags || []).some((tag) => tag.toLowerCase().includes(q));
+          const matchesTag =
+            !tq ||
+            (todo.tags || []).some((tag) => tag.toLowerCase().includes(tq));
+          return matchesQuery && matchesTag;
+        }),
       );
       return;
     }

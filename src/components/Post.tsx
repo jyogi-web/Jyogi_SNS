@@ -446,12 +446,14 @@ export default function Post({
           {post.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
               {post.tags.map((tag, index) => (
-                <span
+                <Link
                   key={index}
+                  href={`/search?tag=${encodeURIComponent(tag)}`}
                   className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-sm hover:bg-blue-500/30 cursor-pointer transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   #{tag}
-                </span>
+                </Link>
               ))}
             </div>
           )}
