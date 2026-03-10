@@ -34,7 +34,6 @@
 | 通知     | notification_settings   | 通知設定             | P1    |
 | 特殊投稿   | weather                 | おすすめ投稿フォーム     | P1    |
 | 特殊投稿   | realction               | REALctionバイナリ画像(test用)  | P2    |
-| 拡張     | embeddings              | セマンティック検索用ベクトル   | P2    |
 | ログ     | security_logs           | セキュリティイベントログ      | P1    |
 | ログ     | infrastructure_logs     | インフラ監視ログ             | P1    |
 
@@ -190,16 +189,7 @@ erDiagram
         timestamptz created_at
     }
 
-    embeddings {
-        uuid id PK
-        uuid entity_id FK
-        text entity_type
-        text content_type
-        vector embedding
-        jsonb metadata
-        text model_name
-        timestamptz created_at
-    }
+
 
     security_logs {
         uuid id PK
@@ -243,7 +233,6 @@ erDiagram
     todos ||--o{ replies : "リプライ対象"
     todos ||--o{ stamp : "スタンプ対象"
     todos ||--o{ notifications : "通知元投稿"
-    todos ||--o{ embeddings : "ベクトル化"
     usels ||--o{ security_logs : "セキュリティ対象(nullable)"
 ```
 
@@ -577,141 +566,3 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.weather;
 | ---------- | --------------------------------------- | ----------------------- |
 | todos      | `created_at < NOW() - INTERVAL '24h'`  | Supabase Edge Functions (cron) or pg_cron |
 | make_stamp | `created_at < NOW() - INTERVAL '24h'`  | 同上                      |
-
-#
----
-
-# 8️⃣ ベクトルDB設計（P2：セマンティック検索 / レコメンド）
-
-## アーキテクチャ選択
-
-Supabase は **pgvector** 拡張を公式サポートするため、同一DB内統合を採用。
-
-```
-App
- └── Supabase PostgreSQL
-      ├── RDB（全テーブル）
-      └── pgvector（embeddings テーブル）
-```
-
-**メリット**
-- `todos` / `usels` との JOIN が可能（トランザクション整合性）
-- RLS をそのまま適用できる
-
-**デメリット**
-- 大規模（数百万ベクトル）では外部 Pinecone / Weaviate への移行を検討
-
----
-
-## embeddings テーブル定義
-
-```mermaid
-erDiagram
-    todos {
-        uuid id PK
-        text title
-    }
-
-    embeddings {
-        uuid id PK
-        uuid entity_id FK
-        text entity_type
-        text content_type
-        vector embedding
-        jsonb metadata
-        text model_name
-        timestamptz created_at
-    }
-
-    todos ||--o{ embeddings : "持つ"
-```
-
-| カラム          | 型           | 説明                             |
-| ------------ | ----------- | ------------------------------ |
-| id           | UUID        | PK                             |
-| entity_id    | UUID        | 紐づくリソースID（todos.id 等）         |
-| entity_type  | TEXT        | 'post' / 'user' 等              |
-| content_type | TEXT        | 'title' / 'body' / 'tags' 等    |
-| embedding    | VECTOR(768) | テキスト埋め込みベクトル                   |
-| metadata     | JSONB       | フィルタ用属性（user_id, tags, status） |
-| model_name   | TEXT        | 使用モデル名（例: `text-embedding-004`） |
-| created_at   | TIMESTAMPTZ | 生成日時                           |
-
----
-
-## メタデータ例（フィルタリング用）
-
-```json
-{
-  "user_id": "uuid",
-  "tags": ["music", "daily"],
-  "has_image": true,
-  "created_at": "2025-01-01T00:00:00Z"
-}
-```
-
----
-
-## インデックス（HNSW：高速近傍探索）
-
-```sql
--- pgvector 拡張を有効化
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- HNSW インデックス（Cosine距離）
-CREATE INDEX idx_embeddings_hnsw
-ON embeddings
-USING hnsw (embedding vector_cosine_ops);
-```
-
----
-
-## 類似投稿検索クエリ
-
-```sql
--- ユーザーが見た投稿に近い投稿を推薦
-SELECT
-  e.entity_id AS post_id,
-  1 - (e.embedding <=> :query_vector) AS similarity
-FROM embeddings e
-WHERE
-  e.entity_type = 'post'
-  AND e.metadata->>'user_id' != :current_user_id   -- 自分の投稿は除外
-ORDER BY e.embedding <=> :query_vector
-LIMIT 10;
-```
-
----
-
-## 更新戦略
-
-| 戦略       | 対象          | 説明                      |
-| -------- | ----------- | ----------------------- |
-| 非同期キュー   | todos 新規投稿時 | 投稿保存 → Job → 埋め込み生成 → 挿入       |
-| 再生成バッチ   | モデル変更時      | 全 embeddings を一括再生成       |
-| TTL連動削除  | todos 削除時   | CASCADE or バッチで embeddings も削除 |
-
----
-
-## 多ベクトル対応（将来拡張）
-
-| content_type         | 用途               |
-| -------------------- | ---------------- |
-| `title`              | 投稿本文の意味検索        |
-| `tags`               | タグベース類似検索        |
-| `user_profile`       | ユーザーレコメンド（フォロー推薦） |
-
----
-
-# 9️⃣ 設計上の注意点・既知の課題
-
-| 項目              | 現状                       | 推奨対応                              |
-| --------------- | ------------------------ | --------------------------------- |
-| テーブル名 `usels`   | `users` の誤記と思われるが定着済み    | 変更時はRLSポリシー・外部キーを一括マイグレーション      |
-| テーブル名 `todos`   | 投稿(posts)だが `todos` を使用  | 同上                                |
-| `likes.on` カラム  | `"on"` は予約語に近い名称         | `is_active` や `is_liked` への改名を推奨 |
-| フォロー数 `usels.follow` | 非正規化カウンタで整合性リスクあり   | DB トリガーまたはアプリ層で同期管理              |
-| `todos.likes`   | 非正規化カウンタ                 | 同上                                |
-| `realction` バイナリ格納 | DB直接格納はスケールに不向き      | 将来的に Cloudflare R2 へ移行推奨         |
-| 場所いいね `weather.likes` | likesテーブルとの分離管理    | 統合管理テーブルへの移行を検討                   |
-| メッセージ既読管理        | 現状未実装                    | `messages.read_at TIMESTAMPTZ` 追加を推奨 |
