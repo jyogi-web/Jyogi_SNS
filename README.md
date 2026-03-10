@@ -172,7 +172,6 @@ src/
 ├── app/
 │   ├── api/          # バックエンド API ルート
 │   ├── auth/         # 認証ページ（ログイン・サインアップ等）
-│   ├── glok/         # AI チャット
 │   ├── weather/      # 天気 Yohoo!
 │   ├── tikuribar/    # TikuriBAR（ボイスチャット）
 │   ├── messages/     # ダイレクトメッセージ
