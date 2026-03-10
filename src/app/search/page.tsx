@@ -377,38 +377,44 @@ export default function SearchPage() {
       return;
     }
 
-    // 正規表現モード: サーバーサイド API で検索
+    // 正規表現モード: サーバーサイド API で検索（300ms デバウンス）
     const controller = new AbortController();
     setIsSearchLoading(true);
     setRegexError(null);
 
-    fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          if (data.error === "invalid_regex") {
-            setRegexError("無効な正規表現です");
+    const timer = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
+        signal: controller.signal,
+      })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            if (data.error === "invalid_regex") {
+              setRegexError("無効な正規表現です");
+            } else {
+              setRegexError("検索エラーが発生しました");
+            }
+            setFilteredTodos([]);
           } else {
+            setFilteredTodos(data.results);
+            setRegexError(null);
+          }
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") {
             setRegexError("検索エラーが発生しました");
           }
-          setFilteredTodos([]);
-        } else {
-          setFilteredTodos(data.results);
-          setRegexError(null);
-        }
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") {
-          setRegexError("検索エラーが発生しました");
-        }
-      })
-      .finally(() => {
-        setIsSearchLoading(false);
-      });
+        })
+        .finally(() => {
+          setIsSearchLoading(false);
+        });
+    }, 800);
 
-    return () => controller.abort();
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      setIsSearchLoading(false);
+    };
   }, [searchQuery, todos, isRegexMode]);
 
   useEffect(() => {
