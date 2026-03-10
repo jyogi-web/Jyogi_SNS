@@ -63,6 +63,9 @@ export default function SearchPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
+  const [isRegexMode, setIsRegexMode] = useState(false);
+  const [regexError, setRegexError] = useState<string | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
 
   // TikuriBar関連の状態
   const [tikuriBars, setTikuriBars] = useState<BarRoom[]>([]);
@@ -357,17 +360,56 @@ export default function SearchPage() {
   useEffect(() => {
     if (!searchQuery) {
       setFilteredTodos([]);
+      setRegexError(null);
       return;
     }
-    const q = searchQuery.toLowerCase();
-    setFilteredTodos(
-      todos.filter(
-        (todo) =>
-          todo.title.toLowerCase().includes(q) ||
-          (todo.tags || []).some((tag) => tag.toLowerCase().includes(q)),
-      ),
-    );
-  }, [searchQuery, todos]);
+
+    if (!isRegexMode) {
+      const q = searchQuery.toLowerCase();
+      setRegexError(null);
+      setFilteredTodos(
+        todos.filter(
+          (todo) =>
+            todo.title.toLowerCase().includes(q) ||
+            (todo.tags || []).some((tag) => tag.toLowerCase().includes(q)),
+        ),
+      );
+      return;
+    }
+
+    // 正規表現モード: サーバーサイド API で検索
+    const controller = new AbortController();
+    setIsSearchLoading(true);
+    setRegexError(null);
+
+    fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          if (data.error === "invalid_regex") {
+            setRegexError("無効な正規表現です");
+          } else {
+            setRegexError("検索エラーが発生しました");
+          }
+          setFilteredTodos([]);
+        } else {
+          setFilteredTodos(data.results);
+          setRegexError(null);
+        }
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          setRegexError("検索エラーが発生しました");
+        }
+      })
+      .finally(() => {
+        setIsSearchLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [searchQuery, todos, isRegexMode]);
 
   useEffect(() => {
     if (!userId) return;
@@ -476,22 +518,54 @@ export default function SearchPage() {
 
             {/* 検索バー */}
             <div className="p-4 border-b border-gray-800">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={20}
-                />
-                <input
-                  type="text"
-                  placeholder="Q 検索"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setActiveTab("search");
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    size={20}
+                  />
+                  <input
+                    type="text"
+                    placeholder={isRegexMode ? "正規表現パターンを入力 (例: p+l)" : "Q 検索"}
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className={`w-full bg-gray-800 border rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none ${
+                      isRegexMode
+                        ? "border-blue-500 focus:border-blue-400"
+                        : "border-gray-700 focus:border-blue-500"
+                    }`}
+                  />
+                  {isSearchLoading && (
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full" />
+                    </div>
+                  )}
+                </div>
+                {/* 正規表現モードトグル */}
+                <button
+                  onClick={() => {
+                    setIsRegexMode((prev) => !prev);
+                    setRegexError(null);
                   }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
+                  title={isRegexMode ? "正規表現モードON" : "正規表現モードOFF"}
+                  className={`flex-shrink-0 px-3 py-2 rounded-lg border font-mono text-sm font-bold transition-colors ${
+                    isRegexMode
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  .*
+                </button>
               </div>
+              {regexError && (
+                <p className="mt-2 text-sm text-red-400 pl-1">{regexError}</p>
+              )}
+              {isRegexMode && !regexError && (
+                <p className="mt-2 text-xs text-blue-400 pl-1">正規表現モード: パターンで投稿を検索します</p>
+              )}
             </div>
 
             {/* タブ */}
