@@ -51,7 +51,6 @@
 | 認証           | Supabase Auth                         | JWT 発行・セッション管理・OAuth 対応をマネージド提供  | `@supabase/ssr` でサーバーサイド対応        |
 | DB アクセス      | Supabase JS Client                    | PostgreSQL への型安全なクエリ・RLS による認可   | ORM なし・SQL ライクな Supabase クエリを直接使用 |
 | ファイルストレージ    | Cloudflare R2 (AWS S3 互換)             | S3 互換 API・無料枠が大きい・CDN 配信が容易      | `@aws-sdk/client-s3` を利用         |
-| AI 連携        | Google Gemini API                     | テキスト生成・投稿アシスト機能                 | `@google/generative-ai` を利用       |
 | プッシュ通知       | Web Push (VAPID)                      | ブラウザネイティブのプッシュ通知                | `web-push` ライブラリ・VAPID キー管理       |
 | RSS / XML 処理 | xml2js                                | ニュースフィード取得・XML パース               | `/api/news` ルートで利用               |
 | WebSocket サーバ | ws                                    | TikuriBar のリアルタイム音声バー機能          | 独立プロセスとして起動（`startTikuriBarServer.ts`） |
@@ -148,4 +147,3 @@
 | PWA / SW     | Service Worker スコープ制限・`Cache-Control` ヘッダー設定   | `next.config.ts` で `sw.js` のキャッシュを `no-store` |
 | Web Push     | VAPID 認証による署名付きプッシュ                            | 公開鍵を `/api/vapid-public-key` で提供             |
 | ファイルアップロード   | サーバーサイドで S3 Presigned URL 発行 or バッファ経由アップロード   | クライアントに R2 シークレットを渡さない                       |
-| AI 入力        | サーバーサイドで Gemini API を呼び出し・プロンプトインジェクション対策を検討中 |                                              |
