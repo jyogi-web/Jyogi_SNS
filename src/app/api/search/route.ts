@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/utils/supabase/server";
+import { supabase } from "@/utils/supabase/client";
 
 type Todo = {
   id: string;
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const { data, error } = await supabaseAdmin.rpc("search_todos_regex", {
+  const { data, error } = await supabase.rpc("search_todos_regex", {
     p_q: q || null,
     p_tag: tag || null,
     p_limit: limit,
@@ -64,10 +64,8 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.json(
       {
-        error: "db_error",
-        message:
-          "DB検索に失敗しました。search_todos_regex 関数が未作成の場合は docs/create_tables.sql の関数定義を実行してください",
-        details: error.message,
+        error: "search_failed",
+        message: "検索に失敗しました。もう一度お試しください",
       },
       { status: 500 }
     );
