@@ -81,6 +81,7 @@ export default function SearchPage() {
     // タグが指定された時だけ検索タブに切り替える
     if (tag !== null) {
       setActiveTab("search");
+      setIsRegexMode(true);
     }
   }, [searchParams]);
 
