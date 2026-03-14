@@ -72,11 +72,14 @@ export default function SearchPage() {
   const [hasMore, setHasMore] = useState(false);
   const SEARCH_LIMIT = 200;
 
-  // URLのtagパラメータが変わったら同期
+// URLのtagパラメータが変わったら同期
   useEffect(() => {
     const tag = searchParams.get("tag");
+    // nullなら空文字にしてクリア、値があればそれをセット
+    setTagQuery(tag ?? "");
+    
+    // タグが指定された時だけ検索タブに切り替える
     if (tag !== null) {
-      setTagQuery(tag);
       setActiveTab("search");
     }
   }, [searchParams]);
