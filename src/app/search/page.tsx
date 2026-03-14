@@ -434,7 +434,7 @@ export default function SearchPage() {
       controller.abort();
       setIsSearchLoading(false);
     };
-  }, [searchQuery, tagQuery, todos, isRegexMode]);
+  }, [searchQuery, tagQuery, isRegexMode]);
 
   useEffect(() => {
     if (!userId) return;
