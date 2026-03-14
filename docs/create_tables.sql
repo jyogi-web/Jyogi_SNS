@@ -1,348 +1,93 @@
--- ============================================================
--- Tikuru24 Supabase テーブル作成 SQL
--- Supabase の SQL エディタに貼り付けて実行してください
--- ============================================================
-
-
--- ============================================================
--- 1. usels（ユーザープロフィール）
--- ============================================================
-CREATE TABLE public.usels (
-  user_id     UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username    TEXT UNIQUE NOT NULL,
-  displayName TEXT,
-  setID       TEXT,
-  icon_url    TEXT,
-  banner_url  TEXT,
-  introduction TEXT,
-  place       TEXT,
-  site        TEXT,
-  birth_date  DATE,
-  follow      INTEGER DEFAULT 0,
-  isBunkatsu  BOOLEAN DEFAULT FALSE,
-  has_posted  BOOLEAN DEFAULT FALSE,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.usels ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "usels_select" ON public.usels FOR SELECT USING (true);
-CREATE POLICY "usels_insert" ON public.usels FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "usels_update" ON public.usels FOR UPDATE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 2. todos（投稿）
--- ============================================================
-CREATE TABLE public.todos (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  username   TEXT,
-  title      TEXT NOT NULL,
-  tags       TEXT[],
-  likes      INTEGER DEFAULT 0,
-  image_url  TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.todos ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "todos_select" ON public.todos FOR SELECT USING (true);
-CREATE POLICY "todos_insert" ON public.todos FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "todos_update" ON public.todos FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "todos_delete" ON public.todos FOR DELETE USING (auth.uid() = user_id);
-
-CREATE INDEX todos_user_id_idx     ON public.todos(user_id);
-CREATE INDEX todos_created_at_idx  ON public.todos(created_at DESC);
-
-
--- ============================================================
--- 3. likes（いいね）
--- ============================================================
-CREATE TABLE public.likes (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id    UUID NOT NULL REFERENCES public.todos(id) ON DELETE CASCADE,
-  user_id    UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  "on"       BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(post_id, user_id)
-);
-
-ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "likes_select" ON public.likes FOR SELECT USING (true);
-CREATE POLICY "likes_insert" ON public.likes FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "likes_update" ON public.likes FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "likes_delete" ON public.likes FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 4. bookmarks（ブックマーク）
--- ============================================================
-CREATE TABLE public.bookmarks (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id    UUID NOT NULL REFERENCES public.todos(id) ON DELETE CASCADE,
-  user_id    UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  "on"       BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(post_id, user_id)
-);
-
-ALTER TABLE public.bookmarks ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "bookmarks_select" ON public.bookmarks FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "bookmarks_insert" ON public.bookmarks FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "bookmarks_update" ON public.bookmarks FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "bookmarks_delete" ON public.bookmarks FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 5. replies（リプライ）
--- ============================================================
-CREATE TABLE public.replies (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id    UUID NOT NULL REFERENCES public.todos(id) ON DELETE CASCADE,
-  user_id    UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  text       TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.replies ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "replies_select" ON public.replies FOR SELECT USING (true);
-CREATE POLICY "replies_insert" ON public.replies FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "replies_delete" ON public.replies FOR DELETE USING (auth.uid() = user_id);
-
-CREATE INDEX replies_post_id_idx ON public.replies(post_id);
-
-
--- ============================================================
--- 6. stamp（スタンプリアクション）
--- ============================================================
-CREATE TABLE public.stamp (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id    UUID NOT NULL REFERENCES public.todos(id) ON DELETE CASCADE,
-  user_id    UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  stanp_url  TEXT NOT NULL,
-  UNIQUE(post_id, user_id, stanp_url)
-);
-
-ALTER TABLE public.stamp ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "stamp_select" ON public.stamp FOR SELECT USING (true);
-CREATE POLICY "stamp_insert" ON public.stamp FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "stamp_delete" ON public.stamp FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 7. make_stamp（ユーザー作成スタンプ・24時間TTL）
--- ============================================================
-CREATE TABLE public.make_stamp (
-  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  make_stanp_url TEXT NOT NULL,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.make_stamp ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "make_stamp_select" ON public.make_stamp FOR SELECT USING (true);
-CREATE POLICY "make_stamp_insert" ON public.make_stamp FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE INDEX make_stamp_created_at_idx ON public.make_stamp(created_at DESC);
-
-
--- ============================================================
--- 8. follows（フォロー関係）
--- ============================================================
-CREATE TABLE public.follows (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  follower_id UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  followed_id UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(follower_id, followed_id),
-  CHECK(follower_id <> followed_id)
-);
-
-ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "follows_select" ON public.follows FOR SELECT USING (true);
-CREATE POLICY "follows_insert" ON public.follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
-CREATE POLICY "follows_delete" ON public.follows FOR DELETE USING (auth.uid() = follower_id);
-
-
--- ============================================================
--- 9. messages（ダイレクトメッセージ）
--- ============================================================
-CREATE TABLE public.messages (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  sender_id   UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  receiver_id UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  text        TEXT NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "messages_select" ON public.messages FOR SELECT
-  USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
-CREATE POLICY "messages_insert" ON public.messages FOR INSERT
-  WITH CHECK (auth.uid() = sender_id);
-CREATE POLICY "messages_delete" ON public.messages FOR DELETE
-  USING (auth.uid() = sender_id);
-
-CREATE INDEX messages_sender_receiver_idx ON public.messages(sender_id, receiver_id);
-CREATE INDEX messages_created_at_idx      ON public.messages(created_at ASC);
-
-
--- ============================================================
--- 10. notifications（通知）
--- ============================================================
-CREATE TABLE public.notifications (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  type        TEXT NOT NULL CHECK (type IN ('like','follow','mention','reply','bookmark','system')),
-  title       TEXT,
-  message     TEXT,
-  username    TEXT,
-  displayName TEXT,
-  avatar      TEXT,
-  post_id     UUID REFERENCES public.todos(id) ON DELETE SET NULL,
-  action_url  TEXT,
-  data        JSONB,
-  read        BOOLEAN DEFAULT FALSE,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "notifications_select" ON public.notifications FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "notifications_insert" ON public.notifications FOR INSERT WITH CHECK (true);
-CREATE POLICY "notifications_update" ON public.notifications FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "notifications_delete" ON public.notifications FOR DELETE USING (auth.uid() = user_id);
-
-CREATE INDEX notifications_user_id_idx    ON public.notifications(user_id);
-CREATE INDEX notifications_created_at_idx ON public.notifications(created_at DESC);
-
-
--- ============================================================
--- 11. push_subscriptions（Webプッシュ購読）
--- ============================================================
-CREATE TABLE public.push_subscriptions (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID NOT NULL UNIQUE REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  subscription JSONB NOT NULL,
-  created_at   TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "push_subscriptions_select" ON public.push_subscriptions FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "push_subscriptions_insert" ON public.push_subscriptions FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "push_subscriptions_update" ON public.push_subscriptions FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "push_subscriptions_delete" ON public.push_subscriptions FOR DELETE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 12. notification_settings（通知設定）
--- ============================================================
-CREATE TABLE public.notification_settings (
-  user_id                UUID PRIMARY KEY REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  email_notifications    BOOLEAN DEFAULT TRUE,
-  push_notifications     BOOLEAN DEFAULT TRUE,
-  mention_notifications  BOOLEAN DEFAULT TRUE,
-  like_notifications     BOOLEAN DEFAULT TRUE,
-  retweet_notifications  BOOLEAN DEFAULT TRUE,
-  follow_notifications   BOOLEAN DEFAULT TRUE,
-  updated_at             TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.notification_settings ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "notification_settings_select" ON public.notification_settings FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "notification_settings_insert" ON public.notification_settings FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "notification_settings_update" ON public.notification_settings FOR UPDATE USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 13. weather（天気投稿）
--- ============================================================
-CREATE TABLE public.weather (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     UUID NOT NULL REFERENCES public.usels(user_id) ON DELETE CASCADE,
-  username    TEXT,
-  user_avatar TEXT,
-  location    TEXT NOT NULL,
-  weather     TEXT NOT NULL CHECK (weather IN ('sunny','cloudy','rainy','snowy','stormy')),
-  temperature FLOAT,
-  humidity    FLOAT,
-  wind_speed  FLOAT,
-  visibility  FLOAT,
-  comment     TEXT,
-  image_url   TEXT,
-  lat         FLOAT,
-  lng         FLOAT,
-  likes       INTEGER DEFAULT 0,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.weather ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "weather_select" ON public.weather FOR SELECT USING (true);
-CREATE POLICY "weather_insert" ON public.weather FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "weather_update" ON public.weather FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "weather_delete" ON public.weather FOR DELETE USING (auth.uid() = user_id);
-
-CREATE INDEX weather_created_at_idx ON public.weather(created_at DESC);
-
-
--- ============================================================
--- 14. realction（REALction バイナリ画像）
--- ============================================================
-CREATE TABLE public.realction (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  bytes      BYTEA NOT NULL,
-  mime       TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.realction ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "realction_select" ON public.realction FOR SELECT USING (true);
-CREATE POLICY "realction_insert" ON public.realction FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-
--- ============================================================
--- Realtime 有効化（リアルタイム更新が必要なテーブル）
--- ============================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE public.todos;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.replies;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.likes;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.stamp;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.weather;
-
-
--- ============================================================
--- 15. 検索RPC（正規表現 + タグAND絞り込み）
--- ============================================================
-CREATE OR REPLACE FUNCTION public.search_todos_regex(
-  p_q TEXT DEFAULT NULL,
-  p_tag TEXT DEFAULT NULL,
-  p_limit INTEGER DEFAULT 50,
-  p_offset INTEGER DEFAULT 0
-)
-RETURNS TABLE (
-  id INTEGER,
-  title TEXT,
-  tags TEXT[],
-  likes INTEGER,
-  user_id TEXT,
-  created_at TIMESTAMPTZ
-)
-LANGUAGE sql
-STABLE
-AS $$
+
+\restrict vK3NlS1UJk5w8UgmLgrTj4avT3GsdEHrS44L12IqR1ggAAnjFrr9OV3wxMvR6Wo
+
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+
+COMMENT ON SCHEMA "public" IS 'standard public schema';
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE OR REPLACE FUNCTION "public"."TTL deleat"() RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$BEGIN
+  DELETE FROM public.todos WHERE created_at <= (CURRENT_TIMESTAMP - INTERVAL '1 day');
+  RETURN;
+END;$$;
+
+
+ALTER FUNCTION "public"."TTL deleat"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  INSERT INTO public.usels (user_id, username, introduction, place, birth_date, follow)
+  VALUES (
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'username', 'user_' || substr(new.id::text, 1, 8)),
+    COALESCE('こんにちは、' || (new.raw_user_meta_data->>'displayName') || 'です！', 'よろしくお願いします'),
+    '',
+    NULL,
+    0
+  );
+  RETURN new;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."search_todos_regex"("p_q" "text" DEFAULT NULL::"text", "p_tag" "text" DEFAULT NULL::"text", "p_limit" integer DEFAULT 50, "p_offset" integer DEFAULT 0) RETURNS TABLE("id" integer, "title" "text", "tags" "text"[], "likes" integer, "user_id" "text", "created_at" timestamp with time zone)
+    LANGUAGE "sql" STABLE
+    AS $$
   SELECT
     t.id,
     t.title,
@@ -373,3 +118,1311 @@ AS $$
   LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 201)
   OFFSET GREATEST(COALESCE(p_offset, 0), 0);
 $$;
+
+
+ALTER FUNCTION "public"."search_todos_regex"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."bookmarks" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp without time zone NOT NULL,
+    "post_id" integer,
+    "user_id" "uuid" DEFAULT "gen_random_uuid"(),
+    "on" boolean
+);
+
+
+ALTER TABLE "public"."bookmarks" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."bookmarks" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."bookmarks_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."follows" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "follower_id" "uuid",
+    "followed_id" "uuid"
+);
+
+
+ALTER TABLE "public"."follows" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."follows" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."follows_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."likes" (
+    "created_at" timestamp without time zone NOT NULL,
+    "user_id" "uuid" DEFAULT "gen_random_uuid"(),
+    "post_id" integer,
+    "on" boolean,
+    "id" integer NOT NULL
+);
+
+
+ALTER TABLE "public"."likes" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."likes" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."likes_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."make_stamp" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "make_stanp_url" "text"
+);
+
+
+ALTER TABLE "public"."make_stamp" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."make_stamp" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."make_stamp_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."messages" (
+    "receiver_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "message" json,
+    "username" "text",
+    "sender_id" "uuid",
+    "text" "text",
+    "id" bigint NOT NULL
+);
+
+
+ALTER TABLE "public"."messages" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."messages" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."messages_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."notification_settings" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "email_notifications" boolean DEFAULT true,
+    "push_notifications" boolean DEFAULT true,
+    "mention_notifications" boolean DEFAULT true,
+    "like_notifications" boolean DEFAULT true,
+    "retweet_notifications" boolean DEFAULT false,
+    "follow_notifications" boolean DEFAULT true,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."notification_settings" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."notifications" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "type" character varying(20) NOT NULL,
+    "title" "text" NOT NULL,
+    "message" "text" NOT NULL,
+    "data" "jsonb",
+    "read" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."notifications" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."push_subscriptions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "subscription" "jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."push_subscriptions" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."realction" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "mime" "text" DEFAULT 'image/jpeg'::"text" NOT NULL,
+    "bytes" "bytea" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."realction" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."replies" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "user_id" "uuid",
+    "text" "text",
+    "post_id" integer
+);
+
+
+ALTER TABLE "public"."replies" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."replies" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."replies_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."stamp" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp without time zone DEFAULT "now"() NOT NULL,
+    "stanp_url" "text",
+    "post_id" "text",
+    "user_id" "text"
+);
+
+
+ALTER TABLE "public"."stamp" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."stamp" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."stamp_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."text_" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "text" json
+);
+
+
+ALTER TABLE "public"."text_" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."text_" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."text__id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."tikuribar_chat_messages" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "bar_id" "uuid",
+    "user_id" "uuid",
+    "username" "text" NOT NULL,
+    "message" "text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."tikuribar_chat_messages" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."tikuribar_participants" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "bar_id" "uuid",
+    "user_id" "uuid",
+    "username" "text" NOT NULL,
+    "role" "text" DEFAULT 'listener'::"text",
+    "is_muted" boolean DEFAULT false,
+    "joined_at" timestamp with time zone DEFAULT "now"(),
+    "left_at" timestamp with time zone,
+    "is_active" boolean DEFAULT true,
+    CONSTRAINT "tikuribar_participants_role_check" CHECK (("role" = ANY (ARRAY['bartender'::"text", 'speaker'::"text", 'listener'::"text"])))
+);
+
+
+ALTER TABLE "public"."tikuribar_participants" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."tikuribar_rooms" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "title" "text" NOT NULL,
+    "description" "text",
+    "host_user_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "is_active" boolean DEFAULT true,
+    "max_participants" integer DEFAULT 50
+);
+
+
+ALTER TABLE "public"."tikuribar_rooms" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."tikuribar_voice_messages" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "bar_id" "uuid",
+    "user_id" "uuid",
+    "username" "text" NOT NULL,
+    "audio_url" "text" NOT NULL,
+    "duration_ms" integer,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."tikuribar_voice_messages" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."todos" (
+    "id" integer NOT NULL,
+    "title" "text",
+    "end_date" "date",
+    "test" smallint,
+    "likes" smallint,
+    "tags" "text"[],
+    "bookmarked" boolean,
+    "user_id" "text",
+    "created_at" timestamp with time zone,
+    "replies" smallint,
+    "image_url" "text"
+);
+
+
+ALTER TABLE "public"."todos" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."todos_id_seq"
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."todos_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."todos_id_seq" OWNED BY "public"."todos"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."usels" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "username" "text" DEFAULT 'わしじゃよ'::"text",
+    "introduction" "text" DEFAULT 'よろしくお願いします'::"text",
+    "place" "text",
+    "birth_date" "date",
+    "follow" smallint DEFAULT '0'::smallint,
+    "site" "text",
+    "user_id" "uuid",
+    "setID" "text",
+    "follower" smallint DEFAULT '0'::smallint,
+    "icon_url" "text",
+    "has_posted" boolean,
+    "isBunkatsu" boolean,
+    "banner_url" "text"
+);
+
+
+ALTER TABLE "public"."usels" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."usels"."isBunkatsu" IS '分割機能オンオフ';
+
+
+
+COMMENT ON COLUMN "public"."usels"."banner_url" IS 'バナーを保存するカラム';
+
+
+
+ALTER TABLE "public"."usels" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."usels_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE OR REPLACE VIEW "public"."users" AS
+ SELECT "id",
+    "email",
+    ("raw_user_meta_data" ->> 'username'::"text") AS "username",
+    ("raw_user_meta_data" ->> 'display_name'::"text") AS "display_name"
+   FROM "auth"."users";
+
+
+ALTER VIEW "public"."users" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."weather" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "username" "text",
+    "user_avatar" "text",
+    "location" "text",
+    "weather" "text",
+    "temperature" double precision,
+    "humidity" double precision,
+    "wind_speed" double precision,
+    "visibility" double precision,
+    "comment" "text",
+    "image_url" "text",
+    "likes" bigint DEFAULT '0'::bigint NOT NULL,
+    "lat" double precision,
+    "lng" double precision
+);
+
+
+ALTER TABLE "public"."weather" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."weather" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."weather_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+ALTER TABLE ONLY "public"."todos" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."todos_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."bookmarks"
+    ADD CONSTRAINT "bookmarks_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."follows"
+    ADD CONSTRAINT "follows_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."likes"
+    ADD CONSTRAINT "likes_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."make_stamp"
+    ADD CONSTRAINT "make_stamp_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."messages"
+    ADD CONSTRAINT "messages_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."notification_settings"
+    ADD CONSTRAINT "notification_settings_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."notification_settings"
+    ADD CONSTRAINT "notification_settings_user_id_key" UNIQUE ("user_id");
+
+
+
+ALTER TABLE ONLY "public"."notifications"
+    ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."push_subscriptions"
+    ADD CONSTRAINT "push_subscriptions_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."realction"
+    ADD CONSTRAINT "realction_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."replies"
+    ADD CONSTRAINT "replies_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stamp"
+    ADD CONSTRAINT "stamp_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."text_"
+    ADD CONSTRAINT "text__pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_chat_messages"
+    ADD CONSTRAINT "tikuribar_chat_messages_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_participants"
+    ADD CONSTRAINT "tikuribar_participants_bar_id_user_id_key" UNIQUE ("bar_id", "user_id");
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_participants"
+    ADD CONSTRAINT "tikuribar_participants_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_rooms"
+    ADD CONSTRAINT "tikuribar_rooms_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_voice_messages"
+    ADD CONSTRAINT "tikuribar_voice_messages_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."todos"
+    ADD CONSTRAINT "todos_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."likes"
+    ADD CONSTRAINT "unique_user_post_like" UNIQUE ("user_id", "post_id");
+
+
+
+ALTER TABLE ONLY "public"."usels"
+    ADD CONSTRAINT "usels_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."weather"
+    ADD CONSTRAINT "weather_pkey" PRIMARY KEY ("id");
+
+
+
+CREATE INDEX "idx_notification_settings_user_id" ON "public"."notification_settings" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_notifications_created_at" ON "public"."notifications" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "idx_notifications_duplicate_prevention" ON "public"."notifications" USING "btree" ("user_id", "type", "created_at") WHERE (("type")::"text" = 'like'::"text");
+
+
+
+CREATE INDEX "idx_notifications_user_id" ON "public"."notifications" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_push_subscriptions_user_id" ON "public"."push_subscriptions" USING "btree" ("user_id");
+
+
+
+ALTER TABLE ONLY "public"."notification_settings"
+    ADD CONSTRAINT "notification_settings_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."notifications"
+    ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."push_subscriptions"
+    ADD CONSTRAINT "push_subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."realction"
+    ADD CONSTRAINT "realction_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_chat_messages"
+    ADD CONSTRAINT "tikuribar_chat_messages_bar_id_fkey" FOREIGN KEY ("bar_id") REFERENCES "public"."tikuribar_rooms"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_chat_messages"
+    ADD CONSTRAINT "tikuribar_chat_messages_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_participants"
+    ADD CONSTRAINT "tikuribar_participants_bar_id_fkey" FOREIGN KEY ("bar_id") REFERENCES "public"."tikuribar_rooms"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_participants"
+    ADD CONSTRAINT "tikuribar_participants_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_rooms"
+    ADD CONSTRAINT "tikuribar_rooms_host_user_id_fkey" FOREIGN KEY ("host_user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_voice_messages"
+    ADD CONSTRAINT "tikuribar_voice_messages_bar_id_fkey" FOREIGN KEY ("bar_id") REFERENCES "public"."tikuribar_rooms"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tikuribar_voice_messages"
+    ADD CONSTRAINT "tikuribar_voice_messages_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+CREATE POLICY "24SNS" ON "public"."follows" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow all insert" ON "public"."likes" FOR INSERT WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow all select" ON "public"."bookmarks" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Allow all select" ON "public"."likes" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Allow service_role to insert notifications" ON "public"."notifications" FOR INSERT TO "service_role" WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow service_role to read notifications" ON "public"."notifications" FOR SELECT TO "service_role" USING (true);
+
+
+
+CREATE POLICY "Anyone can read tikuribar_chat_messages" ON "public"."tikuribar_chat_messages" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Anyone can read tikuribar_participants" ON "public"."tikuribar_participants" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Anyone can read tikuribar_rooms" ON "public"."tikuribar_rooms" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Anyone can read tikuribar_voice_messages" ON "public"."tikuribar_voice_messages" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Authenticated users can create tikuribar_chat_messages" ON "public"."tikuribar_chat_messages" FOR INSERT WITH CHECK (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "Authenticated users can create tikuribar_rooms" ON "public"."tikuribar_rooms" FOR INSERT WITH CHECK (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "Authenticated users can create tikuribar_voice_messages" ON "public"."tikuribar_voice_messages" FOR INSERT WITH CHECK (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "Authenticated users can manage tikuribar_participants" ON "public"."tikuribar_participants" WITH CHECK (("auth"."uid"() IS NOT NULL));
+
+
+
+CREATE POLICY "Enable insert for authenticated users only" ON "public"."bookmarks" FOR INSERT WITH CHECK (true);
+
+
+
+CREATE POLICY "Enable insert for authenticated users only" ON "public"."likes" FOR INSERT WITH CHECK (true);
+
+
+
+CREATE POLICY "Enable insert for authenticated users only" ON "public"."todos" FOR INSERT WITH CHECK (true);
+
+
+
+CREATE POLICY "Enable insert for users based on user_id" ON "public"."usels" FOR INSERT WITH CHECK ((( SELECT "auth"."uid"() AS "uid") = "user_id"));
+
+
+
+CREATE POLICY "Enable read access for all users" ON "public"."bookmarks" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Enable read access for all users" ON "public"."likes" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Enable read access for all users" ON "public"."usels" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Smart TTL policy" ON "public"."todos" FOR SELECT USING ((("created_at" > (CURRENT_TIMESTAMP - '24:00:00'::interval)) OR ((("auth"."uid"())::"text" = "user_id") AND ("created_at" <= (CURRENT_TIMESTAMP - '24:00:00'::interval)) AND ("created_at" > (CURRENT_TIMESTAMP - '25:00:00'::interval)))));
+
+
+
+CREATE POLICY "Users can manage their own notification settings" ON "public"."notification_settings" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can manage their own notifications" ON "public"."notifications" TO "authenticated", "anon" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can manage their own subscriptions" ON "public"."push_subscriptions" USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "all" ON "public"."bookmarks" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "all" ON "public"."usels" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."bookmarks" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "deleat" ON "public"."likes" FOR DELETE USING (true);
+
+
+
+ALTER TABLE "public"."follows" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "insert own" ON "public"."weather" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "insert_own_realction" ON "public"."realction" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."likes" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."make_stamp" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "make_stanp_policy" ON "public"."make_stamp" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."messages" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "messagespolicy" ON "public"."messages" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."notification_settings" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."push_subscriptions" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "read all" ON "public"."weather" FOR SELECT TO "authenticated", "anon" USING (true);
+
+
+
+ALTER TABLE "public"."realction" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."replies" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "reply" ON "public"."replies" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "select_own_realction" ON "public"."realction" FOR SELECT TO "authenticated" USING (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."stamp" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "stamp_All" ON "public"."stamp" USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."text_" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."tikuribar_chat_messages" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."tikuribar_participants" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."tikuribar_rooms" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."tikuribar_voice_messages" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."todos" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "update" ON "public"."bookmarks" FOR UPDATE USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "update" ON "public"."likes" FOR UPDATE USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "update" ON "public"."todos" FOR UPDATE USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "update " ON "public"."usels" FOR UPDATE USING (true) WITH CHECK (true);
+
+
+
+ALTER TABLE "public"."usels" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."weather" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "ユーザーは自分のuselsデータのみ参照できる" ON "public"."usels" FOR SELECT USING (("user_id" = "auth"."uid"()));
+
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."bookmarks";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."likes";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."text_";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."usels";
+
+
+
+GRANT USAGE ON SCHEMA "public" TO "postgres";
+GRANT USAGE ON SCHEMA "public" TO "anon";
+GRANT USAGE ON SCHEMA "public" TO "authenticated";
+GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."TTL deleat"() TO "anon";
+GRANT ALL ON FUNCTION "public"."TTL deleat"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."TTL deleat"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."search_todos_regex"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."search_todos_regex"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."search_todos_regex"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
+
+
+
+SET SESSION AUTHORIZATION "postgres";
+RESET SESSION AUTHORIZATION;
+
+
+
+SET SESSION AUTHORIZATION "postgres";
+RESET SESSION AUTHORIZATION;
+
+
+
+SET SESSION AUTHORIZATION "postgres";
+RESET SESSION AUTHORIZATION;
+
+
+
+
+
+
+
+
+
+GRANT ALL ON TABLE "public"."bookmarks" TO "anon";
+GRANT ALL ON TABLE "public"."bookmarks" TO "authenticated";
+GRANT ALL ON TABLE "public"."bookmarks" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."follows" TO "anon";
+GRANT ALL ON TABLE "public"."follows" TO "authenticated";
+GRANT ALL ON TABLE "public"."follows" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."likes" TO "anon";
+GRANT ALL ON TABLE "public"."likes" TO "authenticated";
+GRANT ALL ON TABLE "public"."likes" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."make_stamp" TO "anon";
+GRANT ALL ON TABLE "public"."make_stamp" TO "authenticated";
+GRANT ALL ON TABLE "public"."make_stamp" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."messages" TO "anon";
+GRANT ALL ON TABLE "public"."messages" TO "authenticated";
+GRANT ALL ON TABLE "public"."messages" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."notification_settings" TO "anon";
+GRANT ALL ON TABLE "public"."notification_settings" TO "authenticated";
+GRANT ALL ON TABLE "public"."notification_settings" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."notifications" TO "anon";
+GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
+GRANT ALL ON TABLE "public"."notifications" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."push_subscriptions" TO "anon";
+GRANT ALL ON TABLE "public"."push_subscriptions" TO "authenticated";
+GRANT ALL ON TABLE "public"."push_subscriptions" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."realction" TO "anon";
+GRANT ALL ON TABLE "public"."realction" TO "authenticated";
+GRANT ALL ON TABLE "public"."realction" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."replies" TO "anon";
+GRANT ALL ON TABLE "public"."replies" TO "authenticated";
+GRANT ALL ON TABLE "public"."replies" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."stamp" TO "anon";
+GRANT ALL ON TABLE "public"."stamp" TO "authenticated";
+GRANT ALL ON TABLE "public"."stamp" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."text_" TO "anon";
+GRANT ALL ON TABLE "public"."text_" TO "authenticated";
+GRANT ALL ON TABLE "public"."text_" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "anon";
+GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "authenticated";
+GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tikuribar_participants" TO "anon";
+GRANT ALL ON TABLE "public"."tikuribar_participants" TO "authenticated";
+GRANT ALL ON TABLE "public"."tikuribar_participants" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "anon";
+GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "authenticated";
+GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "anon";
+GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "authenticated";
+GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."todos" TO "anon";
+GRANT ALL ON TABLE "public"."todos" TO "authenticated";
+GRANT ALL ON TABLE "public"."todos" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."usels" TO "anon";
+GRANT ALL ON TABLE "public"."usels" TO "authenticated";
+GRANT ALL ON TABLE "public"."usels" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."users" TO "anon";
+GRANT ALL ON TABLE "public"."users" TO "authenticated";
+GRANT ALL ON TABLE "public"."users" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."weather" TO "anon";
+GRANT ALL ON TABLE "public"."weather" TO "authenticated";
+GRANT ALL ON TABLE "public"."weather" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."weather_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."weather_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."weather_id_seq" TO "service_role";
+
+
+
+SET SESSION AUTHORIZATION "postgres";
+RESET SESSION AUTHORIZATION;
+
+
+
+SET SESSION AUTHORIZATION "postgres";
+RESET SESSION AUTHORIZATION;
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\unrestrict vK3NlS1UJk5w8UgmLgrTj4avT3GsdEHrS44L12IqR1ggAAnjFrr9OV3wxMvR6Wo
+
+RESET ALL;
