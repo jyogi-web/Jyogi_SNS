@@ -21,14 +21,14 @@ function VerifyContent() {
         const token = searchParams.get('token')
         const source = searchParams.get('source')
 
-        if (source === 'signup') {
-          // 登録直後：メール確認待ち状態
-          setStatus('pending')
-          setMessage('確認メールを送信しました。受信ボックスを確認してリンクをクリックしてください。')
-        } else if (type === 'signup' && token) {
+        if (source === 'signup' && token) {
           // サインアップ確認の場合
           setStatus('success')
           setMessage('メールアドレスの確認が完了しました！')
+        } else if (type === 'signup') {
+          // 登録直後：メール確認待ち状態
+          setStatus('pending')
+          setMessage('確認メールを送信しました。受信ボックスを確認してリンクをクリックしてください。')
         } else if (type === 'recovery' && token) {
           // パスワードリセットの場合
           setStatus('success')
