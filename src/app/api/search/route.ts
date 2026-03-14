@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
   const tag = searchParams.get("tag") ?? "";
-  const limit = clamp(Number(searchParams.get("limit") ?? 50), 1, 200);
+  const limit = clamp(Number(searchParams.get("limit") ?? 50), 1, 201);
   const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
 
   if (!q && !tag) {

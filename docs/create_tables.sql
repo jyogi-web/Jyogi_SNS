@@ -370,6 +370,6 @@ AS $$
       )
     )
   ORDER BY t.created_at DESC
-  LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200)
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 201)
   OFFSET GREATEST(COALESCE(p_offset, 0), 0);
 $$;

@@ -68,6 +68,9 @@ export default function SearchPage() {
   const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
   const [regexError, setRegexError] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+// 追加: ページネーション用
+  const [hasMore, setHasMore] = useState(false);
+  const SEARCH_LIMIT = 200;
 
   // URLのtagパラメータが変わったら同期
   useEffect(() => {
@@ -403,6 +406,9 @@ export default function SearchPage() {
       const url = new URL("/api/search", window.location.origin);
       if (searchQuery) url.searchParams.set("q", searchQuery);
       if (tagQuery) url.searchParams.set("tag", tagQuery);
+      // 初回検索でも必ず「表示したい件数 + 1」を要求
+      url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+      url.searchParams.set("offset", "0");
 
       fetch(url.toString(), { signal: controller.signal })
         .then(async (res) => {
@@ -414,14 +420,20 @@ export default function SearchPage() {
               setRegexError("検索エラーが発生しました");
             }
             setFilteredTodos([]);
+            setHasMore(false); // エラー時は「次」はないので false
           } else {
-            setFilteredTodos(data.results);
+            const results = data.results ?? [];
+            // 取得件数が上限を超えていれば「次がある」
+            setHasMore(results.length > SEARCH_LIMIT);
+            // 画面には上限ぴったりまでしか表示しない
+            setFilteredTodos(results.slice(0, SEARCH_LIMIT));
             setRegexError(null);
           }
         })
         .catch((err) => {
           if (err.name !== "AbortError") {
             setRegexError("検索エラーが発生しました");
+            setHasMore(false);
           }
         })
         .finally(() => {
@@ -435,6 +447,41 @@ export default function SearchPage() {
       setIsSearchLoading(false);
     };
   }, [searchQuery, tagQuery, isRegexMode]);
+
+// もっと見る: 追加取得
+  const handleLoadMore = () => {
+    if (!isRegexMode || isSearchLoading) return;
+    const url = new URL("/api/search", window.location.origin);
+    if (searchQuery) url.searchParams.set("q", searchQuery);
+    if (tagQuery) url.searchParams.set("tag", tagQuery);
+    
+    // 常に「表示したい件数 + 1」を要求します
+    url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+    url.searchParams.set("offset", String(filteredTodos.length));
+    
+    setIsSearchLoading(true);
+    fetch(url.toString())
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          setRegexError("検索エラーが発生しました");
+          setHasMore(false);
+        } else {
+          const results = data.results ?? [];
+          
+          // 取得した件数が SEARCH_LIMIT を超えていれば「次がある」と判定
+          setHasMore(results.length > SEARCH_LIMIT);
+          
+          // 画面に追加表示するのは SEARCH_LIMIT 件分だけ（超過分は切り捨てる）
+          setFilteredTodos((prev) => [...prev, ...results.slice(0, SEARCH_LIMIT)]);
+        }
+      })
+      .catch(() => {
+        setRegexError("検索エラーが発生しました");
+        setHasMore(false);
+      })
+      .finally(() => setIsSearchLoading(false));
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -711,27 +758,41 @@ export default function SearchPage() {
                       該当する投稿がありません
                     </div>
                   ) : (
-                    filteredTodos.map((todo) => (
-                      <div
-                        key={todo.id}
-                        className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
-                      >
-                        <div className="font-semibold">{todo.title}</div>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {(todo.tags || []).map((tag) => (
-                            <span
-                              key={tag}
-                              className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
+                    <>
+                      {filteredTodos.map((todo) => (
+                        <div
+                          key={todo.id}
+                          className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
+                        >
+                          <div className="font-semibold">{todo.title}</div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {(todo.tags || []).map((tag) => (
+                              <span
+                                key={tag}
+                                className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            いいね: {todo.likes}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-400 mt-1">
-                          いいね: {todo.likes}
+                      ))}
+                      {/* もっと見るボタン */}
+                      {isRegexMode && hasMore && (
+                        <div className="flex justify-center mt-4">
+                          <button
+                            onClick={handleLoadMore}
+                            disabled={isSearchLoading}
+                            className="px-6 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-full font-semibold disabled:opacity-50"
+                          >
+                            {isSearchLoading ? "読み込み中..." : "もっと見る"}
+                          </button>
                         </div>
-                      </div>
-                    ))
+                      )}
+                    </>
                   )}
                 </div>
               )}
