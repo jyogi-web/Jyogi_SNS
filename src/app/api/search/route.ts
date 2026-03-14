@@ -10,10 +10,16 @@ type Todo = {
   created_at: string;
 };
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
   const tag = searchParams.get("tag") ?? "";
+  const limit = clamp(Number(searchParams.get("limit") ?? 50), 1, 200);
+  const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
 
   if (!q && !tag) {
     return NextResponse.json(
@@ -29,11 +35,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // q が指定されている場合のみ正規表現をコンパイル
-  let regex: RegExp | null = null;
+  if (!Number.isFinite(limit) || !Number.isFinite(offset)) {
+    return NextResponse.json(
+      { error: "invalid_pagination", message: "limit / offset は数値で指定してください" },
+      { status: 400 }
+    );
+  }
+
+  // q が指定されている場合のみ正規表現をバリデーション
   if (q) {
     try {
-      regex = new RegExp(q, "i");
+      new RegExp(q, "i");
     } catch {
       return NextResponse.json(
         { error: "invalid_regex", message: "無効な正規表現パターンです" },
@@ -42,35 +54,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("todos")
-    .select("id, title, tags, likes, user_id, created_at");
+  const { data, error } = await supabaseAdmin.rpc("search_todos_regex", {
+    p_q: q || null,
+    p_tag: tag || null,
+    p_limit: limit,
+    p_offset: offset,
+  });
 
   if (error) {
     return NextResponse.json(
-      { error: "db_error", message: "データ取得に失敗しました" },
+      {
+        error: "db_error",
+        message:
+          "DB検索に失敗しました。search_todos_regex 関数が未作成の場合は docs/create_tables.sql の関数定義を実行してください",
+        details: error.message,
+      },
       { status: 500 }
     );
   }
 
-  const todos: Todo[] = data ?? [];
+  const results: Todo[] = data ?? [];
 
-  const tagLower = tag.toLowerCase();
-
-  const results = todos.filter((todo) => {
-    // q が指定されていれば title または tags に regex マッチ
-    const matchesQ =
-      !regex ||
-      regex.test(todo.title) ||
-      (todo.tags ?? []).some((t) => regex!.test(t));
-
-    // tag が指定されていれば tags[] に部分一致（AND 条件）
-    const matchesTag =
-      !tag ||
-      (todo.tags ?? []).some((t) => t.toLowerCase().includes(tagLower));
-
-    return matchesQ && matchesTag;
+  return NextResponse.json({
+    results,
+    total: results.length,
+    limit,
+    offset,
   });
-
-  return NextResponse.json({ results, total: results.length });
 }

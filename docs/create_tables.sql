@@ -321,3 +321,55 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.stamp;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.weather;
+
+
+-- ============================================================
+-- 15. 検索RPC（正規表現 + タグAND絞り込み）
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.search_todos_regex(
+  p_q TEXT DEFAULT NULL,
+  p_tag TEXT DEFAULT NULL,
+  p_limit INTEGER DEFAULT 50,
+  p_offset INTEGER DEFAULT 0
+)
+RETURNS TABLE (
+  id INTEGER,
+  title TEXT,
+  tags TEXT[],
+  likes INTEGER,
+  user_id TEXT,
+  created_at TIMESTAMPTZ
+)
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    t.id,
+    t.title,
+    t.tags,
+    t.likes,
+    t.user_id,
+    t.created_at
+  FROM public.todos AS t
+  WHERE
+    (
+      COALESCE(p_q, '') = ''
+      OR t.title ~* p_q
+      OR EXISTS (
+        SELECT 1
+        FROM unnest(COALESCE(t.tags, ARRAY[]::TEXT[])) AS tg
+        WHERE tg ~* p_q
+      )
+    )
+    AND (
+      COALESCE(p_tag, '') = ''
+      OR EXISTS (
+        SELECT 1
+        FROM unnest(COALESCE(t.tags, ARRAY[]::TEXT[])) AS tg
+        WHERE tg ILIKE '%' || p_tag || '%'
+      )
+    )
+  ORDER BY t.created_at DESC
+  LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200)
+  OFFSET GREATEST(COALESCE(p_offset, 0), 0);
+$$;
