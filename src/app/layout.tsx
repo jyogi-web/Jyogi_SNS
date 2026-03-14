@@ -7,8 +7,8 @@ import LoadingScreenWrapper from "@/components/LoadingScreenWrapper";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Tikuru24",
-  description: "Tikuru24 - 瞬間で繋がるSNS",
+  title: "Jyogi_SNS",
+  description: "JyogiSNS - 瞬間で繋がるSNS",
   manifest: "/manifest.json",
   themeColor: "#000000",
   viewport:
@@ -16,26 +16,26 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Tikuru24",
+    title: "JyogiSNS",
   },
   formatDetection: {
     telephone: false,
   },
   openGraph: {
     type: "website",
-    siteName: "Tikuru24",
-    title: "Tikuru24",
-    description: "Tikuru24 - 瞬間で繋がるSNS",
+    siteName: "JyogiSNS",
+    title: "JyogiSNS",
+    description: "JyogiSNS - 瞬間で繋がるSNS",
   },
   twitter: {
     card: "summary",
-    title: "Tikuru24",
-    description: "Tikuru24 - 瞬間で繋がるSNS",
+    title: "JyogiSNS",
+    description: "JyogiSNS - 瞬間で繋がるSNS",
   },
   icons: {
-    icon: '/tikuru24-favicon.ico',
-    shortcut: '/tikuru24-icon-192.png',
-    apple: '/tikuru24-icon-192.png',
+    icon: "/tikuru24-favicon.ico",
+    shortcut: "/tikuru24-icon-192.png",
+    apple: "/tikuru24-icon-192.png",
   },
 };
 
@@ -48,9 +48,7 @@ export default function RootLayout({
     <html lang="ja">
       <body className={inter.className}>
         <AuthProvider>
-          <LoadingScreenWrapper>
-            {children}
-          </LoadingScreenWrapper>
+          <LoadingScreenWrapper>{children}</LoadingScreenWrapper>
         </AuthProvider>
       </body>
     </html>

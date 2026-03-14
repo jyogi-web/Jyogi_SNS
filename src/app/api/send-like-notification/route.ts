@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { supabaseAdmin } from '@/utils/supabase/server'; // 変更
 
-// VAPID設定
-webpush.setVapidDetails(
-  'mailto:your-email@example.com',
-  process.env.NEXT_PUBLIC_VAPID_KEY || '',
-  process.env.VAPID_PRIVATE_KEY || ''
-);
-
 export async function POST(request: NextRequest) {
   try {
+    // VAPID設定（リクエスト時に初期化してビルドエラーを防ぐ）
+    webpush.setVapidDetails(
+      'mailto:your-email@example.com',
+      process.env.NEXT_PUBLIC_VAPID_KEY || '',
+      process.env.VAPID_PRIVATE_KEY || ''
+    );
     const { postId, likerId, postOwnerId } = await request.json();
     
     console.log('=== Like Notification API Called ===');

@@ -17,6 +17,10 @@ import {
   RotateCcw,
   RotateCw,
   Hourglass,
+  Upload,
+  ImageIcon,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 import { supabase } from "@/utils/supabase/client";
 
@@ -43,6 +47,18 @@ export default function ReactionsPage() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [activeTool, setActiveTool] = useState<"brush" | "eraser">("brush");
+
+  // 画像アップロードモード用
+  const [pageMode, setPageMode] = useState<"draw" | "upload">("draw");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // より豊富な色の選択肢（グラデーション風）
   const colorPalettes = {
@@ -284,6 +300,132 @@ export default function ReactionsPage() {
     setActiveTool(tool);
   };
 
+  // --- ユーザーID取得 ---
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setCurrentUserId(data.user?.id ?? null);
+    });
+  }, []);
+
+  // --- Canvas API 画像圧縮処理（#009）---
+  const compressImage = (
+    file: File,
+    maxWidth = 512,
+    maxHeight = 512,
+    quality = 0.8
+  ): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("Canvas context failed"));
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) resolve(blob);
+              else reject(new Error("Compression failed"));
+            },
+            "image/jpeg",
+            quality
+          );
+        };
+        img.onerror = () => reject(new Error("Image load failed"));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error("File read failed"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // --- 画像ファイル選択ハンドラ（#009）---
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setUploadMessage({ type: "error", text: "画像ファイルを選択してください" });
+      return;
+    }
+    setUploadFile(file);
+    setUploadMessage(null);
+    const url = URL.createObjectURL(file);
+    setUploadPreview(url);
+  };
+
+  // --- 画像アップロード処理（#007 + #008 + #009）---
+  const handleImageUpload = async () => {
+    if (!uploadFile) return;
+    if (!currentUserId) {
+      setUploadMessage({ type: "error", text: "ログインが必要です" });
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadMessage(null);
+
+    try {
+      // 圧縮処理（#009）
+      const compressed = await compressImage(uploadFile);
+      const originalKB = Math.round(uploadFile.size / 1024);
+      const compressedKB = Math.round(compressed.size / 1024);
+      console.log(
+        `[COMPRESS] ${originalKB}KB → ${compressedKB}KB (${Math.round((compressedKB / originalKB) * 100)}%)`
+      );
+
+      // R2アップロード + ストレージ上限チェック（#007 + #008）
+      const form = new FormData();
+      form.append("file", compressed, "stamp.jpg");
+      form.append("userId", currentUserId);
+
+      const res = await fetch("/api/upload-stamp", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) {
+        const { error } = await res.json();
+        throw new Error(error ?? "アップロードに失敗しました");
+      }
+
+      const { imageUrl } = await res.json();
+
+      // Supabaseに保存
+      const { error: dbError } = await supabase
+        .from("make_stamp")
+        .insert({ make_stanp_url: imageUrl });
+
+      if (dbError) throw new Error("DB保存に失敗しました: " + dbError.message);
+
+      setUploadMessage({
+        type: "success",
+        text: `スタンプを登録しました（${originalKB}KB → ${compressedKB}KB に圧縮）`,
+      });
+      setUploadFile(null);
+      setUploadPreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+
+      // スタンプ一覧を更新
+      const { data } = await supabase
+        .from("make_stamp")
+        .select("id, make_stanp_url, created_at");
+      if (data) setStamps(data);
+    } catch (err: any) {
+      setUploadMessage({ type: "error", text: err.message ?? "エラーが発生しました" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // --- クラウド保存処理 ---
   const saveAndUploadImage = async () => {
     const canvas = canvasRef.current;
@@ -382,30 +524,144 @@ export default function ReactionsPage() {
           </div>
         </div>
 
+        {/* モード切替タブ */}
+        <div className="flex space-x-2 mb-6">
+          <button
+            onClick={() => setPageMode("draw")}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+              pageMode === "draw"
+                ? "bg-gradient-to-r from-gray-600 to-gray-700 text-white border border-gray-500 shadow-lg"
+                : "bg-gray-800/50 text-gray-400 hover:text-white border border-gray-700"
+            }`}
+          >
+            <Brush size={18} />
+            <span>描いて作る</span>
+          </button>
+          <button
+            onClick={() => setPageMode("upload")}
+            className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+              pageMode === "upload"
+                ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white border border-blue-500 shadow-lg"
+                : "bg-gray-800/50 text-gray-400 hover:text-white border border-gray-700"
+            }`}
+          >
+            <Upload size={18} />
+            <span>画像をアップロード</span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-          {/* メインキャンバスエリア */}
+          {/* メインエリア */}
           <div className="xl:col-span-3">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl rounded-2xl p-6 border border-gray-700 shadow-2xl">
-              <div className="bg-white rounded-xl p-4 shadow-inner">
-                <canvas
-                  ref={canvasRef}
-                  width={800}
-                  height={600}
-                  className={`w-full h-auto border border-gray-200 rounded-lg shadow-lg ${
-                    activeTool === "eraser"
-                      ? "cursor-crosshair"
-                      : "cursor-crosshair"
-                  }`}
-                  style={{
-                    cursor: activeTool === "eraser" ? "crosshair" : "crosshair",
-                  }}
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                />
+            {pageMode === "draw" ? (
+              /* 描画キャンバス */
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl rounded-2xl p-6 border border-gray-700 shadow-2xl">
+                <div className="bg-white rounded-xl p-4 shadow-inner">
+                  <canvas
+                    ref={canvasRef}
+                    width={800}
+                    height={600}
+                    className="w-full h-auto border border-gray-200 rounded-lg shadow-lg cursor-crosshair"
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              /* 画像アップロードパネル（#007 #008 #009） */
+              <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl rounded-2xl p-8 border border-gray-700 shadow-2xl">
+                <h2 className="text-xl font-bold text-white mb-6 flex items-center space-x-2">
+                  <ImageIcon size={22} className="text-blue-400" />
+                  <span>画像スタンプを登録</span>
+                </h2>
+
+                {/* ファイル選択エリア */}
+                <div
+                  className="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-blue-500 transition-colors duration-300 mb-6"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadPreview ? (
+                    <img
+                      src={uploadPreview}
+                      alt="プレビュー"
+                      className="max-h-64 max-w-full mx-auto rounded-xl object-contain"
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      <Upload size={48} className="text-gray-500 mx-auto" />
+                      <p className="text-gray-300 font-medium">
+                        クリックして画像を選択
+                      </p>
+                      <p className="text-gray-500 text-sm">
+                        PNG・JPG・GIF など（最大5MB）
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        アップロード前に自動で512×512px以内に圧縮されます
+                      </p>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                </div>
+
+                {uploadFile && (
+                  <div className="text-sm text-gray-400 mb-4">
+                    選択中: {uploadFile.name} (
+                    {Math.round(uploadFile.size / 1024)}KB)
+                  </div>
+                )}
+
+                {uploadMessage && (
+                  <div
+                    className={`flex items-center space-x-2 p-4 rounded-xl mb-4 ${
+                      uploadMessage.type === "success"
+                        ? "bg-green-900/40 border border-green-600 text-green-300"
+                        : "bg-red-900/40 border border-red-600 text-red-300"
+                    }`}
+                  >
+                    {uploadMessage.type === "success" ? (
+                      <CheckCircle size={18} />
+                    ) : (
+                      <AlertCircle size={18} />
+                    )}
+                    <span>{uploadMessage.text}</span>
+                  </div>
+                )}
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleImageUpload}
+                    disabled={!uploadFile || isUploading}
+                    className="flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 disabled:from-gray-700 disabled:to-gray-800 disabled:text-gray-500 text-white px-6 py-3 rounded-xl transition-all duration-300 transform hover:scale-105 disabled:scale-100 border border-blue-500 disabled:border-gray-600 font-semibold"
+                  >
+                    <Upload size={18} />
+                    <span>
+                      {isUploading ? "アップロード中..." : "スタンプとして登録"}
+                    </span>
+                  </button>
+                  {uploadPreview && (
+                    <button
+                      onClick={() => {
+                        setUploadFile(null);
+                        setUploadPreview(null);
+                        setUploadMessage(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-gray-300 border border-gray-600 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ツールパネル */}

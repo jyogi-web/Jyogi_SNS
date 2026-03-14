@@ -1,10 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, TrendingUp, Wine, Users, Radio, ExternalLink, Clock } from "lucide-react";
+import {
+  Search,
+  TrendingUp,
+  Wine,
+  Users,
+  Radio,
+  ExternalLink,
+  Clock,
+} from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import { supabase } from "@/utils/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
@@ -45,6 +53,7 @@ type NewsArticle = {
 
 export default function SearchPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("recommended");
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,7 +64,26 @@ export default function SearchPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
-  
+  const [isRegexMode, setIsRegexMode] = useState(false);
+  const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
+  const [regexError, setRegexError] = useState<string | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+// 追加: ページネーション用
+  const [hasMore, setHasMore] = useState(false);
+  const SEARCH_LIMIT = 200;
+
+// URLのtagパラメータが変わったら同期
+  useEffect(() => {
+    const tag = searchParams.get("tag");
+    // nullなら空文字にしてクリア、値があればそれをセット
+    setTagQuery(tag ?? "");
+    
+    // タグが指定された時だけ検索タブに切り替える
+    if (tag !== null) {
+      setActiveTab("search");
+    }
+  }, [searchParams]);
+
   // TikuriBar関連の状態
   const [tikuriBars, setTikuriBars] = useState<BarRoom[]>([]);
   const [isLoadingBars, setIsLoadingBars] = useState(false);
@@ -65,24 +93,27 @@ export default function SearchPage() {
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([
     {
       title: "ポケモンSV、色違いコライドンとミライドンの限定配布がスタート",
-      description: "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
+      description:
+        "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
       url: "#",
-      publishedAt: new Date('2024-01-01T00:00:00Z').toISOString(),
+      publishedAt: new Date("2024-01-01T00:00:00Z").toISOString(),
       source: "ゲームニュース",
     },
     {
       title: "夜勤事件、実写映画化!永江二朗監督が恐怖を拡大",
-      description: "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
+      description:
+        "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
       url: "#",
-      publishedAt: new Date('2024-01-01T00:00:00Z').toISOString(),
+      publishedAt: new Date("2024-01-01T00:00:00Z").toISOString(),
       source: "映画ニュース",
     },
     {
       title: "でんぢゃらすじーさん、24年の伝説に終止符か?ファンの複雑な想い",
-      description: "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
+      description:
+        "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
       url: "#",
-      publishedAt: new Date('2024-01-01T00:00:00Z').toISOString(),
-      source: "エンタメニュース",
+      publishedAt: new Date("2024-01-01T00:00:00Z").toISOString(),
+      source: "エンタメニュースっす",
     },
   ]);
   const [isLoadingNews, setIsLoadingNews] = useState(false);
@@ -92,51 +123,56 @@ export default function SearchPage() {
   const fetchNews = async (forceRefresh = false) => {
     setIsLoadingNews(true);
     setNewsError(null);
-    
+
     try {
       // キャッシュを無効化するためのクエリパラメータを追加
-      const url = forceRefresh ? '/api/news?refresh=true' : '/api/news';
-      
-      console.log('ニュース取得開始:', url);
+      const url = forceRefresh ? "/api/news?refresh=true" : "/api/news";
+
+      console.log("ニュース取得開始:", url);
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+        },
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      console.log('ニュース取得成功:', data.articles?.length || 0, '件');
-      
+      console.log("ニュース取得成功:", data.articles?.length || 0, "件");
+
       if (data.articles && data.articles.length > 0) {
         setNewsArticles(data.articles);
         setNewsError(null); // エラーをクリア
       } else {
         // APIから記事が返されない場合はフォールバックデータを使用
-        const fixedDate = new Date('2024-01-01T00:00:00Z');
+        const fixedDate = new Date("2024-01-01T00:00:00Z");
         setNewsArticles([
           {
-            title: "ポケモンSV、色違いコライドンとミライドンの限定配布がスタート",
-            description: "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
+            title:
+              "ポケモンSV、色違いコライドンとミライドンの限定配布がスタート",
+            description:
+              "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
             url: "#",
             publishedAt: fixedDate.toISOString(),
             source: "ゲームニュース",
           },
           {
             title: "夜勤事件、実写映画化!永江二朗監督が恐怖を拡大",
-            description: "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
+            description:
+              "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
             url: "#",
             publishedAt: fixedDate.toISOString(),
             source: "映画ニュース",
           },
           {
-            title: "でんぢゃらすじーさん、24年の伝説に終止符か?ファンの複雑な想い",
-            description: "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
+            title:
+              "でんぢゃらすじーさん、24年の伝説に終止符か?ファンの複雑な想い",
+            description:
+              "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
             url: "#",
             publishedAt: fixedDate.toISOString(),
             source: "エンタメニュース",
@@ -144,30 +180,35 @@ export default function SearchPage() {
         ]);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('ニュース取得エラー:', errorMessage);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("ニュース取得エラー:", errorMessage);
       setNewsError(`ニュースを読み込めませんでした: ${errorMessage}`);
-      
+
       // フォールバック: モックデータを使用
-      const fixedDate = new Date('2024-01-01T00:00:00Z');
+      const fixedDate = new Date("2024-01-01T00:00:00Z");
       setNewsArticles([
         {
           title: "ポケモンSV、色違いコライドンとミライドンの限定配布がスタート",
-          description: "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
+          description:
+            "人気ゲームソフト『ポケットモンスター スカーレット・バイオレット』で、色違いの伝説のポケモンが限定配布されるイベントが開始されました。",
           url: "#",
           publishedAt: fixedDate.toISOString(),
           source: "ゲームニュース",
         },
         {
           title: "夜勤事件、実写映画化!永江二朗監督が恐怖を拡大",
-          description: "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
+          description:
+            "人気ホラーゲーム『夜勤事件』の実写映画化が決定。永江二朗監督が手がける本作は、ゲームの恐怖を忠実に再現すると話題になっています。",
           url: "#",
           publishedAt: fixedDate.toISOString(),
           source: "映画ニュース",
         },
         {
-          title: "でんぢゃらすじーさん、24年の伝説に終止符か?ファンの複雑な想い",
-          description: "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
+          title:
+            "でんぢゃらすじーさん、24年の伝説に終止符か?ファンの複雑な想い",
+          description:
+            "長年愛され続けてきた『でんぢゃらすじーさん』シリーズの終了が発表され、ファンからは複雑な声が寄せられています。",
           url: "#",
           publishedAt: fixedDate.toISOString(),
           source: "エンタメニュース",
@@ -181,10 +222,10 @@ export default function SearchPage() {
   // コンポーネントマウント時にニュースを取得
   useEffect(() => {
     fetchNews();
-    
+
     // 30分ごとにニュースを更新
     const newsInterval = setInterval(fetchNews, 30 * 60 * 1000);
-    
+
     return () => clearInterval(newsInterval);
   }, []);
 
@@ -195,25 +236,27 @@ export default function SearchPage() {
 
     const connectToTikuriBar = () => {
       try {
-        ws = new WebSocket(process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080');
-        
+        ws = new WebSocket(
+          process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080",
+        );
+
         const connectionTimeout = setTimeout(() => {
           if (ws && ws.readyState === WebSocket.CONNECTING) {
-            console.log('TikuriBar WebSocket接続タイムアウト');
+            console.log("TikuriBar WebSocket接続タイムアウト");
             ws.close();
             setWsConnected(false);
           }
         }, 5000);
-        
+
         ws.onopen = () => {
-          console.log('TikuriBar WebSocket接続成功');
+          console.log("TikuriBar WebSocket接続成功");
           clearTimeout(connectionTimeout);
           setWsConnected(true);
           if (ws && ws.readyState === WebSocket.OPEN) {
             try {
-              ws.send(JSON.stringify({ type: 'get_bars' }));
+              ws.send(JSON.stringify({ type: "get_bars" }));
             } catch (error) {
-              console.warn('TikuriBar ルーム一覧取得エラー:', error);
+              console.warn("TikuriBar ルーム一覧取得エラー:", error);
             }
           }
         };
@@ -221,22 +264,26 @@ export default function SearchPage() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.type === 'bars_list') {
+            if (data.type === "bars_list") {
               setTikuriBars(data.bars || []);
             }
           } catch (error) {
-            console.warn('TikuriBar メッセージ解析エラー:', error);
+            console.warn("TikuriBar メッセージ解析エラー:", error);
           }
         };
 
         ws.onclose = (event) => {
           clearTimeout(connectionTimeout);
-          console.log('TikuriBar WebSocket接続が切断されました:', event.code, event.reason);
+          console.log(
+            "TikuriBar WebSocket接続が切断されました:",
+            event.code,
+            event.reason,
+          );
           setWsConnected(false);
-          
+
           if (event.code !== 1000 && event.code !== 1001) {
             reconnectTimeout = setTimeout(() => {
-              console.log('TikuriBar WebSocket再接続を試行...');
+              console.log("TikuriBar WebSocket再接続を試行...");
               connectToTikuriBar();
             }, 5000);
           }
@@ -244,24 +291,25 @@ export default function SearchPage() {
 
         ws.onerror = (error) => {
           clearTimeout(connectionTimeout);
-          console.warn('TikuriBar WebSocket接続エラー - サーバーが利用できない可能性があります');
+          console.warn(
+            "TikuriBar WebSocket接続エラー - サーバーが利用できない可能性があります",
+          );
           setWsConnected(false);
-          
+
           if (!reconnectTimeout) {
             reconnectTimeout = setTimeout(() => {
-              console.log('TikuriBar WebSocket再接続を試行...');
+              console.log("TikuriBar WebSocket再接続を試行...");
               connectToTikuriBar();
             }, 10000);
           }
         };
-
       } catch (error) {
-        console.warn('TikuriBar WebSocket作成エラー:', error);
+        console.warn("TikuriBar WebSocket作成エラー:", error);
         setWsConnected(false);
-        
+
         if (!reconnectTimeout) {
           reconnectTimeout = setTimeout(() => {
-            console.log('TikuriBar WebSocket再接続を試行...');
+            console.log("TikuriBar WebSocket再接続を試行...");
             connectToTikuriBar();
           }, 15000);
         }
@@ -273,9 +321,9 @@ export default function SearchPage() {
     const interval = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         try {
-          ws.send(JSON.stringify({ type: 'get_bars' }));
+          ws.send(JSON.stringify({ type: "get_bars" }));
         } catch (error) {
-          console.warn('TikuriBar 定期更新エラー:', error);
+          console.warn("TikuriBar 定期更新エラー:", error);
         }
       }
     }, 30000);
@@ -327,19 +375,116 @@ export default function SearchPage() {
   }, [todos]);
 
   useEffect(() => {
-    if (!searchQuery) {
+    if (!searchQuery && !tagQuery) {
       setFilteredTodos([]);
+      setRegexError(null);
       return;
     }
-    const q = searchQuery.toLowerCase();
-    setFilteredTodos(
-      todos.filter(
-        (todo) =>
-          todo.title.toLowerCase().includes(q) ||
-          (todo.tags || []).some((tag) => tag.toLowerCase().includes(q))
-      )
-    );
-  }, [searchQuery, todos]);
+
+    if (!isRegexMode) {
+      const q = searchQuery.toLowerCase();
+      const tq = tagQuery.toLowerCase();
+      setRegexError(null);
+      setFilteredTodos(
+        todos.filter((todo) => {
+          const matchesQuery =
+            !q ||
+            todo.title.toLowerCase().includes(q) ||
+            (todo.tags || []).some((tag) => tag.toLowerCase().includes(q));
+          const matchesTag =
+            !tq ||
+            (todo.tags || []).some((tag) => tag.toLowerCase().includes(tq));
+          return matchesQuery && matchesTag;
+        }),
+      );
+      return;
+    }
+
+    // 正規表現モード: サーバーサイド API で検索（800ms デバウンス）
+    const controller = new AbortController();
+    setIsSearchLoading(true);
+    setRegexError(null);
+
+    const timer = setTimeout(() => {
+      const url = new URL("/api/search", window.location.origin);
+      if (searchQuery) url.searchParams.set("q", searchQuery);
+      if (tagQuery) url.searchParams.set("tag", tagQuery);
+      // 初回検索でも必ず「表示したい件数 + 1」を要求
+      url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+      url.searchParams.set("offset", "0");
+
+      fetch(url.toString(), { signal: controller.signal })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            if (data.error === "invalid_regex") {
+              setRegexError("無効な正規表現です");
+            } else {
+              setRegexError("検索エラーが発生しました");
+            }
+            setFilteredTodos([]);
+            setHasMore(false); // エラー時は「次」はないので false
+          } else {
+            const results = data.results ?? [];
+            // 取得件数が上限を超えていれば「次がある」
+            setHasMore(results.length > SEARCH_LIMIT);
+            // 画面には上限ぴったりまでしか表示しない
+            setFilteredTodos(results.slice(0, SEARCH_LIMIT));
+            setRegexError(null);
+          }
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") {
+            setRegexError("検索エラーが発生しました");
+            setHasMore(false);
+          }
+        })
+        .finally(() => {
+          setIsSearchLoading(false);
+        });
+    }, 800);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      setIsSearchLoading(false);
+    };
+  }, [searchQuery, tagQuery, isRegexMode]);
+
+// もっと見る: 追加取得
+  const handleLoadMore = () => {
+    if (!isRegexMode || isSearchLoading) return;
+    const url = new URL("/api/search", window.location.origin);
+    if (searchQuery) url.searchParams.set("q", searchQuery);
+    if (tagQuery) url.searchParams.set("tag", tagQuery);
+    
+    // 常に「表示したい件数 + 1」を要求します
+    url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+    url.searchParams.set("offset", String(filteredTodos.length));
+    
+    setIsSearchLoading(true);
+    fetch(url.toString())
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          setRegexError("検索エラーが発生しました");
+          setHasMore(false);
+        } else {
+          const results = data.results ?? [];
+          
+          // 取得した件数が SEARCH_LIMIT を超えていれば「次がある」と判定
+          setHasMore(results.length > SEARCH_LIMIT);
+          
+          // 画面に追加表示するのは SEARCH_LIMIT 件分だけ（超過分は切り捨てる）
+          setFilteredTodos((prev) => [...prev, ...results.slice(0, SEARCH_LIMIT)]);
+        }
+      })
+      .catch(() => {
+        setRegexError("検索エラーが発生しました");
+        setHasMore(false);
+      })
+      .finally(() => setIsSearchLoading(false));
+  };
 
   useEffect(() => {
     if (!userId) return;
@@ -351,8 +496,8 @@ export default function SearchPage() {
         myPosts
           .flatMap((t) => t.title.split(/\s+/))
           .map((w) => w.trim())
-          .filter((w) => w.length >= 3)
-      )
+          .filter((w) => w.length >= 3),
+      ),
     );
     setUserWords(words);
   }, [userId, todos]);
@@ -368,8 +513,8 @@ export default function SearchPage() {
         (todo) =>
           todo.user_id !== userId &&
           ((todo.tags || []).some((tag) => userTags.includes(tag)) ||
-            userWords.some((word) => todo.title.includes(word)))
-      )
+            userWords.some((word) => todo.title.includes(word))),
+      ),
     );
   }, [userId, todos, userTags, userWords]);
 
@@ -413,13 +558,13 @@ export default function SearchPage() {
   // ニュース記事をクリックした時の処理
   const handleNewsClick = (url: string) => {
     if (url !== "#") {
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 
   // 更新ボタンのクリックハンドラー
   const handleRefreshNews = () => {
-    console.log('更新ボタンがクリックされました');
+    console.log("更新ボタンがクリックされました");
     fetchNews(true); // 強制更新
   };
 
@@ -436,7 +581,7 @@ export default function SearchPage() {
         <div className="hidden lg:block w-64 flex-shrink-0">
           <Sidebar />
         </div>
-        
+
         {/* メインコンテンツ */}
         <div className="flex-1 min-w-0">
           <div className="max-w-2xl mx-auto lg:border-r border-gray-800 h-full overflow-y-auto pb-20 lg:pb-0">
@@ -445,27 +590,86 @@ export default function SearchPage() {
               {/* モバイル: タイトルのみ */}
               <h1 className="text-xl font-bold">話題を検索</h1>
             </div>
-            
+
             {/* 検索バー */}
             <div className="p-4 border-b border-gray-800">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={20}
-                />
-                <input
-                  type="text"
-                  placeholder="Q 検索"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setActiveTab("search");
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    size={20}
+                  />
+                  <input
+                    type="text"
+                    placeholder={isRegexMode ? "正規表現パターンを入力 (例: p+l)" : "Q 検索"}
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className={`w-full bg-gray-800 border rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none ${
+                      isRegexMode
+                        ? "border-blue-500 focus:border-blue-400"
+                        : "border-gray-700 focus:border-blue-500"
+                    }`}
+                  />
+                  {isSearchLoading && (
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full" />
+                    </div>
+                  )}
+                </div>
+                {/* 正規表現モードトグル */}
+                <button
+                  onClick={() => {
+                    setIsRegexMode((prev) => !prev);
+                    setRegexError(null);
+                    setTagQuery("");
                   }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
+                  title={isRegexMode ? "正規表現モードON" : "正規表現モードOFF"}
+                  className={`flex-shrink-0 px-3 py-2 rounded-lg border font-mono text-sm font-bold transition-colors ${
+                    isRegexMode
+                      ? "bg-blue-600 border-blue-500 text-white"
+                      : "bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  .*
+                </button>
               </div>
+
+              {/* タグ絞り込み（正規表現モード時のみ表示） */}
+              {isRegexMode && (
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-blue-400 font-bold text-sm pl-1">#</span>
+                  <input
+                    type="text"
+                    placeholder="タグで絞り込み (例: 検索)"
+                    value={tagQuery}
+                    onChange={(e) => {
+                      setTagQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className="flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                  {tagQuery && (
+                    <button
+                      onClick={() => setTagQuery("")}
+                      className="text-gray-500 hover:text-gray-300 text-xs px-2"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {regexError && (
+                <p className="mt-2 text-sm text-red-400 pl-1">{regexError}</p>
+              )}
+              {isRegexMode && !regexError && (
+                <p className="mt-2 text-xs text-blue-400 pl-1">正規表現モード: titleにregex & #タグにAND絞り込み</p>
+              )}
             </div>
-            
+
             {/* タブ */}
             <div className="flex border-b border-gray-800">
               {tabs.map((tab) => (
@@ -482,14 +686,16 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
-            
+
             {/* コンテンツエリア */}
             <div className="p-4">
               {activeTab === "recommended" && (
                 <div className="space-y-4">
                   <h2 className="text-xl font-bold mb-4">あなたにおすすめ</h2>
                   {recommended.length === 0 ? (
-                    <div className="text-gray-400">おすすめ投稿がありません</div>
+                    <div className="text-gray-400">
+                      おすすめ投稿がありません
+                    </div>
                   ) : (
                     recommended.map((todo) => (
                       <div
@@ -536,7 +742,8 @@ export default function SearchPage() {
                             #{trend.tag}
                           </div>
                           <div className="text-sm text-gray-400">
-                            投稿数: {trend.count} / 合計いいね: {trend.totalLikes}
+                            投稿数: {trend.count} / 合計いいね:{" "}
+                            {trend.totalLikes}
                           </div>
                         </div>
                         <TrendingUp className="text-green-400" size={20} />
@@ -550,36 +757,52 @@ export default function SearchPage() {
                 <div className="space-y-4">
                   <h2 className="text-xl font-bold mb-4">検索結果</h2>
                   {filteredTodos.length === 0 ? (
-                    <div className="text-gray-400">該当する投稿がありません</div>
+                    <div className="text-gray-400">
+                      該当する投稿がありません
+                    </div>
                   ) : (
-                    filteredTodos.map((todo) => (
-                      <div
-                        key={todo.id}
-                        className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
-                      >
-                        <div className="font-semibold">{todo.title}</div>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {(todo.tags || []).map((tag) => (
-                            <span
-                              key={tag}
-                              className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
+                    <>
+                      {filteredTodos.map((todo) => (
+                        <div
+                          key={todo.id}
+                          className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
+                        >
+                          <div className="font-semibold">{todo.title}</div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {(todo.tags || []).map((tag) => (
+                              <span
+                                key={tag}
+                                className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            いいね: {todo.likes}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-400 mt-1">
-                          いいね: {todo.likes}
+                      ))}
+                      {/* もっと見るボタン */}
+                      {isRegexMode && hasMore && (
+                        <div className="flex justify-center mt-4">
+                          <button
+                            onClick={handleLoadMore}
+                            disabled={isSearchLoading}
+                            className="px-6 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-full font-semibold disabled:opacity-50"
+                          >
+                            {isSearchLoading ? "読み込み中..." : "もっと見る"}
+                          </button>
                         </div>
-                      </div>
-                    ))
+                      )}
+                    </>
                   )}
                 </div>
               )}
             </div>
           </div>
         </div>
-        
+
         {/* デスクトップ: 右サイドバー */}
         <div className="hidden xl:block w-80 flex-shrink-0 h-screen overflow-y-auto">
           {/* 右サイドバーのコンテンツ */}
@@ -588,29 +811,39 @@ export default function SearchPage() {
             <div className="bg-gradient-to-br from-gray-900 via-black to-gray-800 rounded-2xl p-4 border border-amber-500/20 shadow-lg shadow-amber-500/10 relative overflow-hidden">
               {/* 背景のグラデーション効果 */}
               <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5 opacity-50"></div>
-              
+
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 bg-gradient-to-br from-amber-500/80 to-orange-500/80 rounded-lg flex items-center justify-center shadow-lg">
                       <Wine size={16} className="text-white" />
                     </div>
-                    <h2 className="text-xl font-bold text-white">TikuriBAR ライブブルーム</h2>
+                    <h2 className="text-xl font-bold text-white">
+                      TikuriBAR ライブブルーム
+                    </h2>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                    <span className="text-xs text-gray-300">{wsConnected ? '接続中' : '未接続'}</span>
+                    <div
+                      className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
+                    ></div>
+                    <span className="text-xs text-gray-300">
+                      {wsConnected ? "接続中" : "未接続"}
+                    </span>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {!wsConnected ? (
                     <div className="text-center py-8 text-white">
                       <Wine size={32} className="mx-auto mb-2 opacity-60" />
-                      <p className="text-sm">TikuriBARサーバーに接続できません</p>
-                      <p className="text-xs mt-1 text-gray-300">サーバーが起動していない可能性があります</p>
+                      <p className="text-sm">
+                        TikuriBARサーバーに接続できません
+                      </p>
+                      <p className="text-xs mt-1 text-gray-300">
+                        サーバーが起動していない可能性があります
+                      </p>
                       <button
-                        onClick={() => router.push('/tikuribar')}
+                        onClick={() => router.push("/tikuribar")}
                         className="mt-3 bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500/80 hover:to-orange-500/80 text-white px-4 py-2 rounded-lg transition-all duration-300 text-sm shadow-lg"
                       >
                         TikuriBARページへ
@@ -620,7 +853,9 @@ export default function SearchPage() {
                     <div className="text-center py-8 text-white">
                       <Wine size={32} className="mx-auto mb-2 opacity-60" />
                       <p className="text-sm">現在営業中のBARはありません</p>
-                      <p className="text-xs mt-1 text-gray-300">新しいBARを作成してみましょう！</p>
+                      <p className="text-xs mt-1 text-gray-300">
+                        新しいBARを作成してみましょう！
+                      </p>
                     </div>
                   ) : (
                     tikuriBars.map((bar) => (
@@ -630,7 +865,7 @@ export default function SearchPage() {
                         className="group bg-gradient-to-br from-gray-800/40 via-black/60 to-gray-700/40 backdrop-blur-sm rounded-xl p-4 border border-amber-500/20 hover:border-amber-400/40 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg hover:shadow-amber-500/20 relative overflow-hidden"
                       >
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        
+
                         <div className="flex items-center space-x-3 relative z-10">
                           <div className="flex-shrink-0">
                             <div className="w-12 h-12 bg-gradient-to-br from-amber-500/80 to-orange-500/80 rounded-full flex items-center justify-center shadow-lg">
@@ -644,29 +879,39 @@ export default function SearchPage() {
                             <div className="flex items-center space-x-3 mt-1">
                               <div className="flex items-center space-x-1">
                                 <Users size={12} className="text-amber-400" />
-                                <span className="text-xs text-amber-300">{bar.userCount}人</span>
+                                <span className="text-xs text-amber-300">
+                                  {bar.userCount}人
+                                </span>
                               </div>
                               <div className="flex items-center space-x-1">
                                 <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs text-red-400">LIVE</span>
+                                <span className="text-xs text-red-400">
+                                  LIVE
+                                </span>
                               </div>
                             </div>
                             <div className="text-xs text-gray-300 mt-1">
-                              {formatDuration(Date.now() - bar.createdAt)}前から営業中
+                              {formatDuration(Date.now() - bar.createdAt)}
+                              前から営業中
                             </div>
                           </div>
                         </div>
                       </div>
                     ))
                   )}
-                  
+
                   <button
-                    onClick={() => router.push('/tikuribar')}
+                    onClick={() => router.push("/tikuribar")}
                     className="w-full bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500/80 hover:to-orange-500/80 text-white py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-amber-500/25 flex items-center justify-center space-x-2 backdrop-blur-sm border border-amber-400/50 group relative overflow-hidden"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                    <Wine size={18} className="group-hover:rotate-12 transition-transform duration-300 relative z-10" />
-                    <span className="font-semibold relative z-10">TikuriBARへ</span>
+                    <Wine
+                      size={18}
+                      className="group-hover:rotate-12 transition-transform duration-300 relative z-10"
+                    />
+                    <span className="font-semibold relative z-10">
+                      TikuriBARへ
+                    </span>
                     <div className="w-2 h-2 bg-white/60 rounded-full relative z-10"></div>
                   </button>
                 </div>
@@ -682,10 +927,10 @@ export default function SearchPage() {
                   disabled={isLoadingNews}
                   className="text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg"
                 >
-                  {isLoadingNews ? '更新中...' : '更新'}
+                  {isLoadingNews ? "更新中..." : "更新"}
                 </button>
               </div>
-              
+
               {isLoadingNews ? (
                 <div className="text-center py-8 text-gray-400">
                   <div className="animate-spin w-6 h-6 border-2 border-gray-600 border-t-white rounded-full mx-auto mb-2"></div>
@@ -723,7 +968,7 @@ export default function SearchPage() {
                               alt={article.title}
                               className="w-full h-full object-cover"
                               onError={(e) => {
-                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.style.display = "none";
                               }}
                             />
                           </div>
@@ -751,7 +996,10 @@ export default function SearchPage() {
                             {article.url !== "#" && (
                               <>
                                 <span className="text-xs text-gray-500">•</span>
-                                <ExternalLink size={10} className="text-gray-500 group-hover:text-blue-400 transition-colors" />
+                                <ExternalLink
+                                  size={10}
+                                  className="text-gray-500 group-hover:text-blue-400 transition-colors"
+                                />
                               </>
                             )}
                           </div>
@@ -773,7 +1021,7 @@ export default function SearchPage() {
             </div>
           </div>
         </div>
-        
+
         {/* モバイルナビゲーション */}
         <MobileNavigation />
         <MobileExtendedNavigation />
