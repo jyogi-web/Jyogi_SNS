@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/utils/supabase/client";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 type Todo = {
   id: string;
@@ -15,6 +16,28 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export async function GET(req: NextRequest) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch (error) {
+            console.error("Error setting cookies:", error);
+          }
+        },
+      },
+    }
+  );
+
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
   const tag = searchParams.get("tag") ?? "";
@@ -42,19 +65,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // q が指定されている場合のみ正規表現をバリデーション
-  if (q) {
-    try {
-      new RegExp(q, "i");
-    } catch {
-      return NextResponse.json(
-        { error: "invalid_regex", message: "無効な正規表現パターンです" },
-        { status: 400 }
-      );
-    }
-  }
-
-  const { data, error } = await supabase.rpc("search_todos_regex", {
+  const { data, error } = await supabase.rpc("search_todos_pgroonga", {
     p_q: q || null,
     p_tag: tag || null,
     p_limit: limit,
@@ -62,6 +73,7 @@ export async function GET(req: NextRequest) {
   });
 
   if (error) {
+    console.error("Search RPC Error:", error); // サーバーログ用にエラーを出力
     return NextResponse.json(
       {
         error: "search_failed",

@@ -64,9 +64,8 @@ export default function SearchPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
-  const [isRegexMode, setIsRegexMode] = useState(false);
   const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
-  const [regexError, setRegexError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
 // 追加: ページネーション用
   const [hasMore, setHasMore] = useState(false);
@@ -81,7 +80,6 @@ export default function SearchPage() {
     // タグが指定された時だけ検索タブに切り替える
     if (tag !== null) {
       setActiveTab("search");
-      setIsRegexMode(true);
     }
   }, [searchParams]);
 
@@ -375,41 +373,23 @@ export default function SearchPage() {
     setTrends(trendArr);
   }, [todos]);
 
+  // サーバーサイド検索 (pgroonga) の実行 (800ms デバウンス)
   useEffect(() => {
+    //検索条件が完全に空の場合はAPIを叩かず、結果をクリアする
     if (!searchQuery && !tagQuery) {
       setFilteredTodos([]);
-      setRegexError(null);
+      setSearchError(null);
       return;
     }
-
-    if (!isRegexMode) {
-      const q = searchQuery.toLowerCase();
-      const tq = tagQuery.toLowerCase();
-      setRegexError(null);
-      setFilteredTodos(
-        todos.filter((todo) => {
-          const matchesQuery =
-            !q ||
-            todo.title.toLowerCase().includes(q) ||
-            (todo.tags || []).some((tag) => tag.toLowerCase().includes(q));
-          const matchesTag =
-            !tq ||
-            (todo.tags || []).some((tag) => tag.toLowerCase().includes(tq));
-          return matchesQuery && matchesTag;
-        }),
-      );
-      return;
-    }
-
-    // 正規表現モード: サーバーサイド API で検索（800ms デバウンス）
     const controller = new AbortController();
     setIsSearchLoading(true);
-    setRegexError(null);
+    setSearchError(null);
 
     const timer = setTimeout(() => {
       const url = new URL("/api/search", window.location.origin);
       if (searchQuery) url.searchParams.set("q", searchQuery);
       if (tagQuery) url.searchParams.set("tag", tagQuery);
+      
       // 初回検索でも必ず「表示したい件数 + 1」を要求
       url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
       url.searchParams.set("offset", "0");
@@ -418,25 +398,22 @@ export default function SearchPage() {
         .then(async (res) => {
           const data = await res.json();
           if (!res.ok) {
-            if (data.error === "invalid_regex") {
-              setRegexError("無効な正規表現です");
-            } else {
-              setRegexError("検索エラーが発生しました");
-            }
+            // pgroongaの文法エラー等があれば、APIからのメッセージを表示
+            setSearchError(data.message || "検索エラーが発生しました");
             setFilteredTodos([]);
-            setHasMore(false); // エラー時は「次」はないので false
+            setHasMore(false);
           } else {
             const results = data.results ?? [];
             // 取得件数が上限を超えていれば「次がある」
             setHasMore(results.length > SEARCH_LIMIT);
             // 画面には上限ぴったりまでしか表示しない
             setFilteredTodos(results.slice(0, SEARCH_LIMIT));
-            setRegexError(null);
+            setSearchError(null);
           }
         })
         .catch((err) => {
           if (err.name !== "AbortError") {
-            setRegexError("検索エラーが発生しました");
+            setSearchError("ネットワークエラーが発生しました");
             setHasMore(false);
           }
         })
@@ -450,11 +427,11 @@ export default function SearchPage() {
       controller.abort();
       setIsSearchLoading(false);
     };
-  }, [searchQuery, tagQuery, isRegexMode]);
+  }, [searchQuery, tagQuery]);
 
-// もっと見る: 追加取得
+  // もっと見る: 追加取得
   const handleLoadMore = () => {
-    if (!isRegexMode || isSearchLoading) return;
+    
     const url = new URL("/api/search", window.location.origin);
     if (searchQuery) url.searchParams.set("q", searchQuery);
     if (tagQuery) url.searchParams.set("tag", tagQuery);
@@ -468,20 +445,23 @@ export default function SearchPage() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) {
-          setRegexError("検索エラーが発生しました");
+          setSearchError(data.message || "検索エラーが発生しました");
           setHasMore(false);
         } else {
           const results = data.results ?? [];
-          
-          // 取得した件数が SEARCH_LIMIT を超えていれば「次がある」と判定
           setHasMore(results.length > SEARCH_LIMIT);
-          
-          // 画面に追加表示するのは SEARCH_LIMIT 件分だけ（超過分は切り捨てる）
-          setFilteredTodos((prev) => [...prev, ...results.slice(0, SEARCH_LIMIT)]);
+          // ID重複を排除して追加
+          setFilteredTodos((prev) => {
+            const newItems = results.slice(0, SEARCH_LIMIT);
+            const merged = [...prev, ...newItems];
+            // idで重複排除（後ろの要素で上書き）
+            const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
+            return unique;
+          });
         }
       })
       .catch(() => {
-        setRegexError("検索エラーが発生しました");
+        setSearchError("検索エラーが発生しました");
         setHasMore(false);
       })
       .finally(() => setIsSearchLoading(false));
@@ -602,17 +582,13 @@ export default function SearchPage() {
                   />
                   <input
                     type="text"
-                    placeholder={isRegexMode ? "正規表現パターンを入力 (例: p+l)" : "Q 検索"}
+                    placeholder="+　-　|　() を使った検索も可能"
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
                       setActiveTab("search");
                     }}
-                    className={`w-full bg-gray-800 border rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none ${
-                      isRegexMode
-                        ? "border-blue-500 focus:border-blue-400"
-                        : "border-gray-700 focus:border-blue-500"
-                    }`}
+                    className="w-full flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 pl-10 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
                   />
                   {isSearchLoading && (
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
@@ -620,26 +596,9 @@ export default function SearchPage() {
                     </div>
                   )}
                 </div>
-                {/* 正規表現モードトグル */}
-                <button
-                  onClick={() => {
-                    setIsRegexMode((prev) => !prev);
-                    setRegexError(null);
-                    setTagQuery("");
-                  }}
-                  title={isRegexMode ? "正規表現モードON" : "正規表現モードOFF"}
-                  className={`flex-shrink-0 px-3 py-2 rounded-lg border font-mono text-sm font-bold transition-colors ${
-                    isRegexMode
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-400 hover:text-gray-200"
-                  }`}
-                >
-                  .*
-                </button>
               </div>
 
-              {/* タグ絞り込み（正規表現モード時のみ表示） */}
-              {isRegexMode && (
+              {/* タグ絞り込み */}
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-blue-400 font-bold text-sm pl-1">#</span>
                   <input
@@ -650,24 +609,12 @@ export default function SearchPage() {
                       setTagQuery(e.target.value);
                       setActiveTab("search");
                     }}
-                    className="flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
+                    className="w-full flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
                   />
-                  {tagQuery && (
-                    <button
-                      onClick={() => setTagQuery("")}
-                      className="text-gray-500 hover:text-gray-300 text-xs px-2"
-                    >
-                      ✕
-                    </button>
-                  )}
                 </div>
-              )}
 
-              {regexError && (
-                <p className="mt-2 text-sm text-red-400 pl-1">{regexError}</p>
-              )}
-              {isRegexMode && !regexError && (
-                <p className="mt-2 text-xs text-blue-400 pl-1">正規表現モード: titleにregex & #タグにAND絞り込み</p>
+              {searchError && (
+                <p className="mt-2 text-sm text-red-400 pl-1">{searchError}</p>
               )}
             </div>
 
@@ -785,7 +732,7 @@ export default function SearchPage() {
                         </div>
                       ))}
                       {/* もっと見るボタン */}
-                      {isRegexMode && hasMore && (
+                      {hasMore && (
                         <div className="flex justify-center mt-4">
                           <button
                             onClick={handleLoadMore}
