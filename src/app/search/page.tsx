@@ -376,6 +376,12 @@ export default function SearchPage() {
 
   // サーバーサイド検索 (pgroonga) の実行 (800ms デバウンス)
   useEffect(() => {
+    // 古い「もっと見る」リクエストがあれば中断
+    if (loadMoreControllerRef.current) {
+      loadMoreControllerRef.current.abort();
+      loadMoreControllerRef.current = null;
+    }
+
     //検索条件が完全に空の場合はAPIを叩かず、結果をクリアする
     if (!searchQuery && !tagQuery) {
       setFilteredTodos([]);
@@ -427,6 +433,11 @@ export default function SearchPage() {
       clearTimeout(timer);
       controller.abort();
       setIsSearchLoading(false);
+      // 古い「もっと見る」リクエストがあれば中断
+      if (loadMoreControllerRef.current) {
+        loadMoreControllerRef.current.abort();
+        loadMoreControllerRef.current = null;
+      }
     };
   }, [searchQuery, tagQuery]);
 
@@ -472,7 +483,10 @@ const handleLoadMore = () => {
       setSearchError("検索エラーが発生しました");
       setHasMore(false);
     })
-    .finally(() => setIsSearchLoading(false));
+    .finally(() => {
+      setIsSearchLoading(false);
+      loadMoreControllerRef.current = null;
+    });
 };
   useEffect(() => {
     if (!userId) return;

@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     results,
-    total: results.length,
+    returnedCount: results.length,
     limit,
     offset,
   });
