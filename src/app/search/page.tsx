@@ -430,41 +430,61 @@ export default function SearchPage() {
   }, [searchQuery, tagQuery]);
 
   // もっと見る: 追加取得
-  const handleLoadMore = () => {
-    
+const handleLoadMore = () => {
+    // 通信を始める前の検索条件を覚えておく
+    const currentSearchQuery = searchQuery;
+    const currentTagQuery = tagQuery;
+
     const url = new URL("/api/search", window.location.origin);
     if (searchQuery) url.searchParams.set("q", searchQuery);
     if (tagQuery) url.searchParams.set("tag", tagQuery);
-    
-    // 常に「表示したい件数 + 1」を要求します
+
     url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
     url.searchParams.set("offset", String(filteredTodos.length));
-    
+
     setIsSearchLoading(true);
+    
     fetch(url.toString())
       .then(async (res) => {
         const data = await res.json();
+        
+        // 通信が終わった時点で、別の検索を始めていたらこの結果は捨てる
+        if (currentSearchQuery !== searchQuery || currentTagQuery !== tagQuery) {
+          return;
+        }
+
         if (!res.ok) {
           setSearchError(data.message || "検索エラーが発生しました");
           setHasMore(false);
         } else {
+          // 成功したら過去の検索エラーメッセージを消す
+          setSearchError(null);
+          
           const results = data.results ?? [];
           setHasMore(results.length > SEARCH_LIMIT);
-          // ID重複を排除して追加
+          
           setFilteredTodos((prev) => {
             const newItems = results.slice(0, SEARCH_LIMIT);
             const merged = [...prev, ...newItems];
-            // idで重複排除（後ろの要素で上書き）
             const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
             return unique;
           });
         }
       })
       .catch(() => {
+        // ここでも検索条件が変わっていたらエラーを出さずに無視する
+        if (currentSearchQuery !== searchQuery || currentTagQuery !== tagQuery) {
+          return;
+        }
         setSearchError("検索エラーが発生しました");
         setHasMore(false);
       })
-      .finally(() => setIsSearchLoading(false));
+      .finally(() => {
+        // 検索条件が変わっていない時だけローディングを解除する
+        if (currentSearchQuery === searchQuery && currentTagQuery === tagQuery) {
+          setIsSearchLoading(false);
+        }
+      });
   };
 
   useEffect(() => {
