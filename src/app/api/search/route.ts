@@ -57,10 +57,10 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
   }
-
-  if (!Number.isFinite(limit) || !Number.isFinite(offset)) {
+  
+  if (!Number.isInteger(limit) || !Number.isInteger(offset)) {
     return NextResponse.json(
-      { error: "invalid_pagination", message: "limit / offset は数値で指定してください" },
+      { error: "invalid_pagination", message: "limit / offset は整数で指定してください" },
       { status: 400 }
     );
   }
