@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect,useRef } from "react";
 import {
   Search,
   TrendingUp,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import { supabase } from "@/utils/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
@@ -53,6 +53,7 @@ type NewsArticle = {
 
 export default function SearchPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("recommended");
   const [searchQuery, setSearchQuery] = useState("");
@@ -63,6 +64,25 @@ export default function SearchPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userTags, setUserTags] = useState<string[]>([]);
   const [userWords, setUserWords] = useState<string[]>([]);
+  const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+// 追加: ページネーション用
+  const [hasMore, setHasMore] = useState(false);
+  const SEARCH_LIMIT = 200;
+
+// URLのtagパラメータが変わったら同期
+  useEffect(() => {
+    const tag = searchParams.get("tag");
+    // nullなら空文字にしてクリア、値があればそれをセット
+    setTagQuery(tag ?? "");
+    
+    // タグが指定された時だけ検索タブに切り替える
+    if (tag !== null) {
+      setActiveTab("search");
+    }
+  }, [searchParams]);
 
   // TikuriBar関連の状態
   const [tikuriBars, setTikuriBars] = useState<BarRoom[]>([]);
@@ -354,21 +374,120 @@ export default function SearchPage() {
     setTrends(trendArr);
   }, [todos]);
 
+  // サーバーサイド検索 (pgroonga) の実行 (800ms デバウンス)
   useEffect(() => {
-    if (!searchQuery) {
+    // 古い「もっと見る」リクエストがあれば中断
+    if (loadMoreControllerRef.current) {
+      loadMoreControllerRef.current.abort();
+      loadMoreControllerRef.current = null;
+    }
+
+    //検索条件が完全に空の場合はAPIを叩かず、結果をクリアする
+    if (!searchQuery && !tagQuery) {
       setFilteredTodos([]);
+      setSearchError(null);
       return;
     }
-    const q = searchQuery.toLowerCase();
-    setFilteredTodos(
-      todos.filter(
-        (todo) =>
-          todo.title.toLowerCase().includes(q) ||
-          (todo.tags || []).some((tag) => tag.toLowerCase().includes(q)),
-      ),
-    );
-  }, [searchQuery, todos]);
+    const controller = new AbortController();
+    setIsSearchLoading(true);
+    setSearchError(null);
 
+    const timer = setTimeout(() => {
+      const url = new URL("/api/search", window.location.origin);
+      if (searchQuery) url.searchParams.set("q", searchQuery);
+      if (tagQuery) url.searchParams.set("tag", tagQuery);
+      
+      // 初回検索でも必ず「表示したい件数 + 1」を要求
+      url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+      url.searchParams.set("offset", "0");
+
+      fetch(url.toString(), { signal: controller.signal })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            // pgroongaの文法エラー等があれば、APIからのメッセージを表示
+            setSearchError(data.message || "検索エラーが発生しました");
+            setFilteredTodos([]);
+            setHasMore(false);
+          } else {
+            const results = data.results ?? [];
+            // 取得件数が上限を超えていれば「次がある」
+            setHasMore(results.length > SEARCH_LIMIT);
+            // 画面には上限ぴったりまでしか表示しない
+            setFilteredTodos(results.slice(0, SEARCH_LIMIT));
+            setSearchError(null);
+          }
+        })
+        .catch((err) => {
+          if (err.name !== "AbortError") {
+            setSearchError("ネットワークエラーが発生しました");
+            setHasMore(false);
+          }
+        })
+        .finally(() => {
+          setIsSearchLoading(false);
+        });
+    }, 800);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+      setIsSearchLoading(false);
+      // 古い「もっと見る」リクエストがあれば中断
+      if (loadMoreControllerRef.current) {
+        loadMoreControllerRef.current.abort();
+        loadMoreControllerRef.current = null;
+      }
+    };
+  }, [searchQuery, tagQuery]);
+
+  // もっと見る: 追加取得
+const handleLoadMore = () => {
+  setSearchError(null);
+
+  // 古いリクエストが残っていれば切断
+  if (loadMoreControllerRef.current) {
+    loadMoreControllerRef.current.abort();
+  }
+  loadMoreControllerRef.current = new AbortController();
+
+  const url = new URL("/api/search", window.location.origin);
+  if (searchQuery) url.searchParams.set("q", searchQuery);
+  if (tagQuery) url.searchParams.set("tag", tagQuery);
+
+  url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+  url.searchParams.set("offset", String(filteredTodos.length));
+
+  setIsSearchLoading(true);
+
+  fetch(url.toString(), { signal: loadMoreControllerRef.current.signal })
+    .then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.message || "検索エラーが発生しました");
+        setHasMore(false);
+      } else {
+        setSearchError(null);
+        const results = data.results ?? [];
+        setHasMore(results.length > SEARCH_LIMIT);
+        setFilteredTodos((prev) => {
+          const newItems = results.slice(0, SEARCH_LIMIT);
+          const merged = [...prev, ...newItems];
+          return Array.from(new Map(merged.map(item => [item.id, item])).values());
+        });
+      }
+    })
+    .catch((err) => {
+      if (err.name === "AbortError") return;
+      
+      setSearchError("検索エラーが発生しました");
+      setHasMore(false);
+    })
+    .finally(() => {
+      setIsSearchLoading(false);
+      loadMoreControllerRef.current = null;
+    });
+};
   useEffect(() => {
     if (!userId) return;
     const myPosts = todos.filter((t) => t.user_id === userId);
@@ -476,22 +595,48 @@ export default function SearchPage() {
 
             {/* 検索バー */}
             <div className="p-4 border-b border-gray-800">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={20}
-                />
-                <input
-                  type="text"
-                  placeholder="Q 検索"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setActiveTab("search");
-                  }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-full px-4 py-3 pl-10 text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    size={20}
+                  />
+                  <input
+                    type="text"
+                    placeholder="+　-　|　() を使った検索も可能"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className="w-full flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 pl-10 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                  {isSearchLoading && (
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin w-4 h-4 border-2 border-gray-600 border-t-blue-400 rounded-full" />
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* タグ絞り込み */}
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-blue-400 font-bold text-sm pl-1">#</span>
+                  <input
+                    type="text"
+                    placeholder="タグで絞り込み (例: 検索)"
+                    value={tagQuery}
+                    onChange={(e) => {
+                      setTagQuery(e.target.value);
+                      setActiveTab("search");
+                    }}
+                    className="w-full flex-1 bg-gray-800 border border-blue-500/50 rounded-full px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+              {searchError && (
+                <p className="mt-2 text-sm text-red-400 pl-1">{searchError}</p>
+              )}
             </div>
 
             {/* タブ */}
@@ -585,27 +730,41 @@ export default function SearchPage() {
                       該当する投稿がありません
                     </div>
                   ) : (
-                    filteredTodos.map((todo) => (
-                      <div
-                        key={todo.id}
-                        className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
-                      >
-                        <div className="font-semibold">{todo.title}</div>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {(todo.tags || []).map((tag) => (
-                            <span
-                              key={tag}
-                              className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
+                    <>
+                      {filteredTodos.map((todo) => (
+                        <div
+                          key={todo.id}
+                          className="border border-gray-800 rounded-lg p-4 hover:bg-gray-900 transition-colors"
+                        >
+                          <div className="font-semibold">{todo.title}</div>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {(todo.tags || []).map((tag) => (
+                              <span
+                                key={tag}
+                                className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-sm text-gray-400 mt-1">
+                            いいね: {todo.likes}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-400 mt-1">
-                          いいね: {todo.likes}
+                      ))}
+                      {/* もっと見るボタン */}
+                      {hasMore && (
+                        <div className="flex justify-center mt-4">
+                          <button
+                            onClick={handleLoadMore}
+                            disabled={isSearchLoading}
+                            className="px-6 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-full font-semibold disabled:opacity-50"
+                          >
+                            {isSearchLoading ? "読み込み中..." : "もっと見る"}
+                          </button>
                         </div>
-                      </div>
-                    ))
+                      )}
+                    </>
                   )}
                 </div>
               )}

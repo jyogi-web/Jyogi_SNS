@@ -91,6 +91,9 @@ export default function Home() {
   // 楽観的更新用のstate
   const [optimisticPosts, setOptimisticPosts] = useState<PostType[]>([]);
 
+  // タブのstate
+  const [activeTab, setActiveTab] = useState<"newest" | "output_ch">("newest");
+
   // 🚀 fetchTodos関数への参照を保持
   const fetchTodosRef = useRef<(() => Promise<void>) | null>(null);
 
@@ -144,6 +147,14 @@ export default function Home() {
     );
     return uniquePosts;
   }, [optimisticPosts, posts]);
+
+  // タブでフィルタリングされた投稿一覧
+  const filteredPosts = useMemo(() => {
+    if (activeTab === "output_ch") {
+      return displayPosts.filter((post) => (post.tags || []).includes("成果物"));
+    }
+    return displayPosts;
+  }, [displayPosts, activeTab]);
 
   // R2画像URL変換関数をメモ化
   const getPublicIconUrl = useCallback((iconUrl?: string) => {
@@ -737,8 +748,31 @@ export default function Home() {
                 )}
               </div>
               
-              {/* デスクトップ: タイトルのみ */}
-              <h1 className="hidden lg:block text-xl font-bold">ホーム</h1>
+              {/* タブ */}
+              {isClient && (
+                <div className="flex -mx-4 -mb-4 mt-4 lg:mt-0 lg:-mb-4 border-t lg:border-t-0 border-gray-800">
+                  <button
+                    onClick={() => setActiveTab("newest")}
+                    className={`px-3 lg:px-6 py-4 text-sm font-medium transition-colors ${
+                      activeTab === "newest"
+                        ? "text-white border-b-2 border-blue-500"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                  >
+                    新着
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("output_ch")}
+                    className={`px-3 lg:px-6 py-4 text-sm font-medium transition-colors ${
+                      activeTab === "output_ch"
+                        ? "text-white border-b-2 border-blue-500"
+                        : "text-gray-500 hover:text-white"
+                    }`}
+                  >
+                    成果物紹介ch
+                  </button>
+                </div>
+              )}
               
               {authError && (
                 <div className="mt-2 bg-red-900/40 border border-red-700 text-red-200 text-sm p-3 rounded">
@@ -763,12 +797,12 @@ export default function Home() {
             
             {/* 投稿一覧表示 */}
             <div className="relative z-10">
-              {displayPosts.length === 0 ? (
+              {filteredPosts.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <p>まだ投稿がありません</p>
                 </div>
               ) : (
-                displayPosts.map((todo) => {
+                filteredPosts.map((todo) => {
                   const remaining = getRemainingTime(todo.created_at);
                   const result = todo.title;
                   const hours = Math.floor(

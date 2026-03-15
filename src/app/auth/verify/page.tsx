@@ -8,7 +8,7 @@ import AuthLoadingFallback from '@/components/AuthLoadingFallback'
 
 // メインコンポーネントを分離
 function VerifyContent() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [status, setStatus] = useState<'loading' | 'pending' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -19,12 +19,16 @@ function VerifyContent() {
         // URLパラメータから認証状態を確認
         const type = searchParams.get('type')
         const token = searchParams.get('token')
-        const email = searchParams.get('email')
+        const source = searchParams.get('source')
 
-        if (type === 'signup' && token) {
+        if (source === 'signup' && token) {
           // サインアップ確認の場合
           setStatus('success')
           setMessage('メールアドレスの確認が完了しました！')
+        } else if (source === 'signup') {
+          // 登録直後：メール確認待ち状態
+          setStatus('pending')
+          setMessage('確認メールを送信しました。受信ボックスを確認してリンクをクリックしてください。')
         } else if (type === 'recovery' && token) {
           // パスワードリセットの場合
           setStatus('success')
@@ -89,6 +93,20 @@ function VerifyContent() {
               </div>
             )}
 
+            {status === 'pending' && (
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-blue-500/20 rounded-full flex items-center justify-center">
+                  <Mail className="w-8 h-8 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold mb-2 text-blue-400">
+                    ✉️ メールを送信しました
+                  </h2>
+                  <p className="text-gray-300">{message}</p>
+                </div>
+              </div>
+            )}
+
             {status === 'error' && (
               <div className="space-y-4">
                 <div className="w-16 h-16 mx-auto bg-red-500/20 rounded-full flex items-center justify-center">
@@ -136,6 +154,15 @@ function VerifyContent() {
                   新規登録をやり直す
                 </Link>
               </>
+            )}
+
+            {status === 'pending' && (
+              <Link
+                href="/auth/login"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold transition-colors block text-center"
+              >
+                ログインページへ
+              </Link>
             )}
 
             {status === 'loading' && (
