@@ -41,8 +41,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = searchParams.get("q") ?? "";
   const tag = searchParams.get("tag") ?? "";
-  const limit = clamp(Number(searchParams.get("limit") ?? 50), 1, 201);
-  const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
 
   if (!q && !tag) {
     return NextResponse.json(
@@ -58,12 +56,20 @@ export async function GET(req: NextRequest) {
     );
   }
   
-  if (!Number.isInteger(limit) || !Number.isInteger(offset)) {
+// Number()で変換する前の、生の文字列を取得
+  const rawLimit = searchParams.get("limit") ?? "50";
+  const rawOffset = searchParams.get("offset") ?? "0";
+
+  // 半角数字のみで構成されているかを審査
+  if (!/^\d+$/.test(rawLimit) || !/^\d+$/.test(rawOffset)) {
     return NextResponse.json(
-      { error: "invalid_pagination", message: "limit / offset は整数で指定してください" },
+      { error: "invalid_pagination", message: "limit / offset は0以上の整数で指定してください" },
       { status: 400 }
     );
   }
+
+  const limit = clamp(Number(rawLimit), 1, 201);
+  const offset = Number(rawOffset);
 
   const { data, error } = await supabase.rpc("search_todos_pgroonga", {
     p_q: q || null,

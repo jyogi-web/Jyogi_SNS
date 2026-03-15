@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect,useRef } from "react";
 import {
   Search,
   TrendingUp,
@@ -67,6 +67,7 @@ export default function SearchPage() {
   const [tagQuery, setTagQuery] = useState(searchParams.get("tag") ?? "");
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
 // 追加: ページネーション用
   const [hasMore, setHasMore] = useState(false);
   const SEARCH_LIMIT = 200;
@@ -431,62 +432,48 @@ export default function SearchPage() {
 
   // もっと見る: 追加取得
 const handleLoadMore = () => {
-    // 通信を始める前の検索条件を覚えておく
-    const currentSearchQuery = searchQuery;
-    const currentTagQuery = tagQuery;
+  setSearchError(null);
 
-    const url = new URL("/api/search", window.location.origin);
-    if (searchQuery) url.searchParams.set("q", searchQuery);
-    if (tagQuery) url.searchParams.set("tag", tagQuery);
+  // 古いリクエストが残っていれば切断
+  if (loadMoreControllerRef.current) {
+    loadMoreControllerRef.current.abort();
+  }
+  loadMoreControllerRef.current = new AbortController();
 
-    url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
-    url.searchParams.set("offset", String(filteredTodos.length));
+  const url = new URL("/api/search", window.location.origin);
+  if (searchQuery) url.searchParams.set("q", searchQuery);
+  if (tagQuery) url.searchParams.set("tag", tagQuery);
 
-    setIsSearchLoading(true);
-    
-    fetch(url.toString())
-      .then(async (res) => {
-        const data = await res.json();
-        
-        // 通信が終わった時点で、別の検索を始めていたらこの結果は捨てる
-        if (currentSearchQuery !== searchQuery || currentTagQuery !== tagQuery) {
-          return;
-        }
+  url.searchParams.set("limit", String(SEARCH_LIMIT + 1));
+  url.searchParams.set("offset", String(filteredTodos.length));
 
-        if (!res.ok) {
-          setSearchError(data.message || "検索エラーが発生しました");
-          setHasMore(false);
-        } else {
-          // 成功したら過去の検索エラーメッセージを消す
-          setSearchError(null);
-          
-          const results = data.results ?? [];
-          setHasMore(results.length > SEARCH_LIMIT);
-          
-          setFilteredTodos((prev) => {
-            const newItems = results.slice(0, SEARCH_LIMIT);
-            const merged = [...prev, ...newItems];
-            const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
-            return unique;
-          });
-        }
-      })
-      .catch(() => {
-        // ここでも検索条件が変わっていたらエラーを出さずに無視する
-        if (currentSearchQuery !== searchQuery || currentTagQuery !== tagQuery) {
-          return;
-        }
-        setSearchError("検索エラーが発生しました");
+  setIsSearchLoading(true);
+
+  fetch(url.toString(), { signal: loadMoreControllerRef.current.signal })
+    .then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.message || "検索エラーが発生しました");
         setHasMore(false);
-      })
-      .finally(() => {
-        // 検索条件が変わっていない時だけローディングを解除する
-        if (currentSearchQuery === searchQuery && currentTagQuery === tagQuery) {
-          setIsSearchLoading(false);
-        }
-      });
-  };
-
+      } else {
+        setSearchError(null);
+        const results = data.results ?? [];
+        setHasMore(results.length > SEARCH_LIMIT);
+        setFilteredTodos((prev) => {
+          const newItems = results.slice(0, SEARCH_LIMIT);
+          const merged = [...prev, ...newItems];
+          return Array.from(new Map(merged.map(item => [item.id, item])).values());
+        });
+      }
+    })
+    .catch((err) => {
+      if (err.name === "AbortError") return;
+      
+      setSearchError("検索エラーが発生しました");
+      setHasMore(false);
+    })
+    .finally(() => setIsSearchLoading(false));
+};
   useEffect(() => {
     if (!userId) return;
     const myPosts = todos.filter((t) => t.user_id === userId);
