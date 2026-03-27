@@ -42,7 +42,7 @@ export default function Home() {
         displayName?: string;
         setID?: string;
         username?: string;
-        isBunkatsu?: boolean;
+
       }
     >
   >({});
@@ -206,7 +206,7 @@ export default function Home() {
         userIds.length > 0 
           ? supabase
               .from("usels")
-              .select("user_id, icon_url, username, setID, isBunkatsu")
+              .select("user_id, icon_url, username, setID")
               .in("user_id", userIds)
           : Promise.resolve({ data: [], error: null }),
         
@@ -266,7 +266,7 @@ export default function Home() {
           displayName: user.username || "User",
           setID: user.setID || "",
           username: user.username || "",
-          isBunkatsu: user.isBunkatsu ?? false,
+
         };
       });
       setUserMap(userMapLocal);
@@ -755,21 +755,6 @@ export default function Home() {
                 </div>
               ) : (
                 filteredPosts.map((todo) => {
-                  const result = todo.title;
-                  const hours = Math.floor(
-                    (new Date().getTime() - new Date(todo.created_at).getTime()) /
-                      3600000
-                  );
-                  // isBunkatsu取得
-                  const isBunkatsu = userMap[todo.user_id]?.isBunkatsu;
-                  let temp = result;
-                  if (isBunkatsu) {
-                    temp = result.slice(0, result.length - hours * 2);
-                    if (result.length >= 24) {
-                      temp = result.slice(0, result.length - hours * 3);
-                    }
-                  }
-
                   return (
                     <div key={todo.id} className="relative">
                       {/* 楽観的更新中の表示 */}
@@ -788,7 +773,7 @@ export default function Home() {
                             todo.username ||
                             "User",
                           setID: userMap[todo.user_id]?.setID || "",
-                          title: temp,
+                          title: todo.title,
                           created_at: todo.created_at || "",
                           tags: todo.tags || [],
                           replies: todo.replies_data || [], // 🔧 配列データを渡す
