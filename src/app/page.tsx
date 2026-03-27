@@ -15,47 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PostType, ReplyType, StanpType } from "@/types/post";
 
 // 砂時計アイコン（Lucide ReactのSVGをインラインで利用）
-function HourglassIcon({ className = "w-5 h-5 text-yellow-400 mr-1" }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M6 3h12M6 21h12M8 3v2a6 6 0 006 6v2a6 6 0 01-6 6v2m8-18v2a6 6 0 01-6 6v2a6 6 0 006 6v2"
-      />
-    </svg>
-  );
-}
 
-// 残り時間計算関数
-function getRemainingTime(createdAt: string) {
-  const created = new Date(createdAt).getTime();
-  const now = Date.now();
-  const expires = created + 24 * 60 * 60 * 1000;
-  const diff = expires - now;
-  if (diff <= 0) return null;
-  const hours = Math.floor(diff / (1000 * 60 * 60));
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-  return `${hours.toString().padStart(2, "0")}:${minutes
-    .toString()
-    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-}
-
-// 期限切れ判定関数
-function isPostExpired(createdAt: string): boolean {
-  const created = new Date(createdAt).getTime();
-  const now = Date.now();
-  const expires = created + 24 * 60 * 60 * 1000;
-  return now >= expires;
-}
 
 // 🗑️ ローカルの型定義を削除（インポートした型を使用）
 // type ReplyType = { ... } ← 削除
@@ -82,7 +42,7 @@ export default function Home() {
         displayName?: string;
         setID?: string;
         username?: string;
-        isBunkatsu?: boolean;
+
       }
     >
   >({});
@@ -207,15 +167,7 @@ export default function Home() {
         return;
       }
 
-      // 🚀 期限切れ投稿をフィルタリング
-      const validTodos = todosData.filter((todo: any) => 
-        !isPostExpired(todo.created_at)
-      );
-
-      if (validTodos.length === 0) {
-        setPosts([]);
-        return;
-      }
+      const validTodos = todosData;
 
       // 2. ユーザーIDを抽出
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -254,7 +206,7 @@ export default function Home() {
         userIds.length > 0 
           ? supabase
               .from("usels")
-              .select("user_id, icon_url, username, setID, isBunkatsu")
+              .select("user_id, icon_url, username, setID")
               .in("user_id", userIds)
           : Promise.resolve({ data: [], error: null }),
         
@@ -314,7 +266,7 @@ export default function Home() {
           displayName: user.username || "User",
           setID: user.setID || "",
           username: user.username || "",
-          isBunkatsu: user.isBunkatsu ?? false,
+
         };
       });
       setUserMap(userMapLocal);
@@ -803,34 +755,8 @@ export default function Home() {
                 </div>
               ) : (
                 filteredPosts.map((todo) => {
-                  const remaining = getRemainingTime(todo.created_at);
-                  const result = todo.title;
-                  const hours = Math.floor(
-                    (new Date().getTime() - new Date(todo.created_at).getTime()) /
-                      3600000
-                  );
-                  // isBunkatsu取得
-                  const isBunkatsu = userMap[todo.user_id]?.isBunkatsu;
-                  let temp = result;
-                  if (isBunkatsu) {
-                    temp = result.slice(0, result.length - hours * 2);
-                    if (result.length >= 24) {
-                      temp = result.slice(0, result.length - hours * 3);
-                    }
-                  }
-
                   return (
                     <div key={todo.id} className="relative">
-                      {/* 砂時計＋残り時間 */}
-                      {remaining && (
-                        <div className="absolute right-4 top-2 flex items-center bg-gray-900/80 rounded-full px-2 py-1 text-xs z-20 border border-yellow-400">
-                          <HourglassIcon />
-                          <span className="text-yellow-300 font-mono">
-                            {remaining}
-                          </span>
-                        </div>
-                      )}
-
                       {/* 楽観的更新中の表示 */}
                       {todo.isOptimistic && (
                         <div className="absolute top-2 left-2 bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded-full z-10">
@@ -847,7 +773,7 @@ export default function Home() {
                             todo.username ||
                             "User",
                           setID: userMap[todo.user_id]?.setID || "",
-                          title: temp,
+                          title: todo.title,
                           created_at: todo.created_at || "",
                           tags: todo.tags || [],
                           replies: todo.replies_data || [], // 🔧 配列データを渡す

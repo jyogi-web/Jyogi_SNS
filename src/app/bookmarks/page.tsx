@@ -87,7 +87,7 @@ export default function BookmarksPage() {
           userIds.length > 0
             ? supabase
                 .from("usels")
-                .select("user_id, icon_url, username, setID, isBunkatsu") // 🔧 display_nameを削除、isBunkatsuを追加
+                .select("user_id, icon_url, username, setID")
                 .in("user_id", userIds)
             : Promise.resolve({ data: [], error: null }),
           
@@ -122,7 +122,7 @@ export default function BookmarksPage() {
             displayName: user.username || "User", // 🔧 ホーム画面と同じ
             setID: user.setID || "", // 🔧 ホーム画面と同じ
             username: user.username || "", // 🔧 ホーム画面と同じ
-            isBunkatsu: user.isBunkatsu ?? false,
+
           };
         });
 

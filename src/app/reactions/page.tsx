@@ -16,7 +16,7 @@ import {
   Save,
   RotateCcw,
   RotateCw,
-  Hourglass,
+
   Upload,
   ImageIcon,
   AlertCircle,
@@ -464,23 +464,7 @@ export default function ReactionsPage() {
     alert("スタンプがクラウドに保存されました！");
   };
 
-  // 24時間後までの残り時間を計算する関数
-  function getRemainingTime(createdAt: string): string {
-    const created = new Date(createdAt).getTime();
-    const expires = created + 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const diff = expires - now;
-    if (diff <= 0) return "00:00:00";
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return `${hours.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
-
-  // --- スタンプ一覧の取得と表示例（仮） ---
-  // ここではmake_stampテーブルのデータを取得し、砂時計＋残り時間を表示する例を追加します。
+  // --- スタンプ一覧の取得と表示 ---
   const [stamps, setStamps] = useState<any[]>([]);
   useEffect(() => {
     const fetchStamps = async () => {
@@ -865,12 +849,7 @@ export default function ReactionsPage() {
                     {historyIndex + 1} / {history.length}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">残り時間:</span>
-                  <span className="text-white font-semibold">
-                    {getRemainingTime(new Date().toISOString())}
-                  </span>
-                </div>
+
               </div>
             </div>
 
@@ -886,12 +865,6 @@ export default function ReactionsPage() {
                     alt="stamp"
                     className="w-16 h-16 rounded-lg border border-gray-600"
                   />
-                  <div className="flex items-center space-x-2">
-                    <Hourglass size={20} className="text-yellow-400" />
-                    <span className="text-lg font-mono text-yellow-200">
-                      {getRemainingTime(stamp.created_at)}
-                    </span>
-                  </div>
                 </div>
               ))}
             </div>
