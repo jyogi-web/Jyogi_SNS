@@ -3,7 +3,7 @@
 import {
   Clock,
   Heart,
-  CloudSun,
+  MapPin,
   Wine,
   Camera,
   MoreHorizontal,
@@ -43,7 +43,7 @@ export default function MobileExtendedNavigation() {
     { icon: Clock, label: "Clock", href: "/glok", color: "text-yellow-400" },
     { icon: Heart, label: "リアクション", href: "/reactions", color: "text-pink-400" },
     { icon: Camera, label: "REALction", href: "/realction", color: "text-purple-400" },
-    { icon: CloudSun, label: "天気Yahoo!", href: "/weather", color: "text-blue-400" },
+    { icon: MapPin, label: "おすすめスポット", href: "/map", color: "text-green-400" },
     { icon: Wine, label: "TikuriBAR", href: "/tikuribar", color: "text-green-400" },
     { icon: Settings, label: "設定", href: "/settings", color: "text-gray-400" },
     ...(user ? [{ 
