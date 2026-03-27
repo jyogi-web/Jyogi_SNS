@@ -21,6 +21,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import TutorialModal from "@/components/TutorialModal";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useBarAudio } from "./hooks/useBarAudio";
 
@@ -508,6 +509,7 @@ export default function TikuriBarPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-amber-900/20 text-white relative overflow-hidden">
+      <TutorialModal featureId="tikuribar" />
       {/* 背景アニメーション */}
       <div className="absolute inset-0 overflow-hidden">
         {/* バーライフ風の背景パターン */}

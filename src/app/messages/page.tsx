@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft, Search } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import TutorialModal from "@/components/TutorialModal";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
 import { supabase } from "@/utils/supabase/client";
@@ -62,6 +63,7 @@ export default function MessagePage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <TutorialModal featureId="messages" />
       <div className="max-w-7xl mx-auto flex h-screen">
         {/* デスクトップ: 左サイドバー */}
         <div className="hidden lg:block w-64 flex-shrink-0">

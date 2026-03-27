@@ -10,6 +10,7 @@ import SpotPostForm from "./components/SpotPostForm";
 import SpotMapView from "./components/SpotMapView";
 import SpotListView from "./components/SpotListView";
 import { ViewMode, NewSpotData } from "./types";
+import TutorialModal from "@/components/TutorialModal";
 
 export default function MapPage() {
   const { user } = useAuth();
@@ -109,6 +110,7 @@ export default function MapPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <TutorialModal featureId="map" />
       <MapHeader
         viewMode={viewMode}
         setViewMode={setViewMode}

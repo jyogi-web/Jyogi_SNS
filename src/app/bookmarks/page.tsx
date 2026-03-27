@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import TutorialModal from "@/components/TutorialModal";
 import Post from "@/components/Post";
 import { supabase } from "@/utils/supabase/client";
 import { PostType } from "@/types/post";
@@ -361,6 +362,7 @@ export default function BookmarksPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <TutorialModal featureId="bookmarks" />
       <div className="flex max-w-7xl mx-auto">
         {/* 左サイドバー */}
         <div className="w-64 flex-shrink-0 h-screen sticky top-0">
