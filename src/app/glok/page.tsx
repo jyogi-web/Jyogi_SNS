@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Home } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import TutorialModal from '@/components/TutorialModal';
 import { Thread, LS_KEY } from './types';
 import Starfield, { StarfieldRef } from './components/Starfield';
 import Header from './components/Header';
@@ -392,6 +393,7 @@ export default function GlokPage() {
       position: 'relative',
       overflow: 'hidden',
     }}>
+      <TutorialModal featureId="clock" />
       <Starfield ref={starfieldRef} active={true} />
       
       <Header

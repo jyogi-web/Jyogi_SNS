@@ -13,6 +13,7 @@ import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { useAuth } from "@/contexts/AuthContext";
 // 🔧 共通型定義をインポート
 import { PostType, ReplyType, StanpType } from "@/types/post";
+import TutorialModal from "@/components/TutorialModal";
 
 // 砂時計アイコン（Lucide ReactのSVGをインラインで利用）
 
@@ -649,6 +650,7 @@ export default function Home() {
     <>
       <ServiceWorkerRegistration />
       <PWAInstaller />
+      <TutorialModal featureId="timeline" />
       <div className="min-h-screen bg-black text-white">
         <div className="max-w-7xl mx-auto flex h-screen">
           {/* デスクトップ: 左サイドバー */}
