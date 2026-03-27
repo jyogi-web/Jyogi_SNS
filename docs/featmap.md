@@ -344,7 +344,35 @@ CREATE TABLE spot_posts (
 
 ---
 
-## 7️⃣ 開発時の注意点
+## 7️⃣ weatherテーブルからspot_postsテーブルへの変更点
+
+### カラム比較
+
+| カラム | weather（変更前） | spot_posts（変更後） | 変更内容 |
+|--------|-----------------|-------------------|--------|
+| 位置情報 | `lat FLOAT`、`lng FLOAT`（任意） | `latitude DOUBLE PRECISION NOT NULL`、`longitude DOUBLE PRECISION NOT NULL` | 必須化・精度向上 |
+| スポット名 | なし | `title TEXT NOT NULL` | 新規追加（必須） |
+| カテゴリ | なし | `category TEXT DEFAULT 'その他'` | 新規追加 |
+| コメント | `comment TEXT` | `description TEXT DEFAULT ''` | カラム名を意味的に明確化 |
+| 画像URL | `image_url TEXT` | `photo_url TEXT` | カラム名変更 |
+| ユーザーアイコン | `user_avatar TEXT` | `user_icon_url TEXT` | カラム名変更 |
+| 地名 | `location TEXT NOT NULL` | `address TEXT DEFAULT ''` | 必須解除（自動取得のため） |
+| いいね管理 | `likes INTEGER` のみ | `likes INTEGER` + `liked_by UUID[] DEFAULT '{}'` | 誰がいいねしたかを配列で追跡（楽観的UI・重複防止のため） |
+| 天気情報 | `weather_type`、`temperature`、`humidity`、`wind_speed`、`visibility` | なし | 天気機能を完全削除 |
+| FK参照先 | `usels(user_id)` | `auth.users(id)` | 直接認証テーブルを参照するよう変更 |
+
+### 設計方針の変化
+
+| 観点 | weather | spot_posts |
+|------|---------|------------|
+| 位置情報の役割 | 補助的（任意） | 主役（必須・高精度） |
+| いいね | カウンタのみ | カウンタ＋ユーザーID配列で二重管理 |
+| カテゴリ分類 | なし | 5種類（グルメ・自然・観光・カフェ・その他） |
+| スポット名 | なし | 必須入力 |
+
+---
+
+## 8️⃣ 開発時の注意点
 
 ### Supabaseテーブルが未作成の場合
 `useSpotPosts` がエラーをキャッチし、自動的に `mockData.ts` のデータを表示する。
