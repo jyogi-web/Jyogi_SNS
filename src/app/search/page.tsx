@@ -515,7 +515,7 @@ const handleLoadMore = () => {
         (todo) =>
           todo.user_id !== userId &&
           ((todo.tags || []).some((tag) => userTags.includes(tag)) ||
-            userWords.some((word) => todo.title.includes(word))),
+            userWords.some((word) => (todo.title ?? "").includes(word))),
       ),
     );
   }, [userId, todos, userTags, userWords]);
