@@ -94,9 +94,6 @@ console.error('ensureProfile: upsert error', insErr);
 
 // src/app/page.tsx
 console.log('🔍 Supabaseから取得した投稿数:', todosData?.length || 0);
-
-// src/app/api/gemini-api/route.ts
-console.error('Gemini API Error:', e);
 ```
 
 ---

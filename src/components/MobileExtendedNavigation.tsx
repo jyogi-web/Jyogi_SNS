@@ -40,7 +40,6 @@ export default function MobileExtendedNavigation() {
   }, []);
 
   const extendedMenuItems: ExtendedMenuItem[] = [
-    { icon: Clock, label: "Clock", href: "/glok", color: "text-yellow-400" },
     { icon: Heart, label: "リアクション", href: "/reactions", color: "text-pink-400" },
     { icon: Camera, label: "REALction", href: "/realction", color: "text-purple-400" },
     { icon: CloudSun, label: "天気Yahoo!", href: "/weather", color: "text-blue-400" },

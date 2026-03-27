@@ -87,7 +87,6 @@ export default function Sidebar() {
     { icon: Bell, label: "通知", href: "/notifications" },
     { icon: Mail, label: "メッセージ", href: "/messages" },
     { icon: Bookmark, label: "ブックマーク", href: "/bookmarks" },
-    { icon: Clock, label: "Clock", href: "/glok" },
     { icon: Heart, label: "リアクション", href: "/reactions" },
     { icon: Camera, label: "REALction", href: "/realction" },
     { icon: CloudSun, label: "天気Yohoo!", href: "/weather" },
