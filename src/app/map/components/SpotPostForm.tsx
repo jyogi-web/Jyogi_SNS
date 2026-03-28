@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, X, MapPin, Loader2, CheckCircle, ImagePlus } from "lucide-react";
 import { NewSpotData, SpotCategory, CATEGORIES } from "../types";
 import { compressAndUploadImage } from "../utils/helpers";
+import { Loader } from "@googlemaps/js-api-loader";
 
 interface SpotPostFormProps {
   onClose: () => void;
@@ -26,7 +27,51 @@ export default function SpotPostForm({ onClose, onSubmit }: SpotPostFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
+  // Google Maps Places ライブラリを読み込む
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) return;
+
+    const loader = new Loader({
+      apiKey,
+      version: "weekly",
+      libraries: ["places"],
+      language: process.env.NEXT_PUBLIC_MAPS_LANG || "ja",
+      region: process.env.NEXT_PUBLIC_MAPS_REGION || "JP",
+    });
+
+    loader.load().then(() => {
+      autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
+      geocoderRef.current = new google.maps.Geocoder();
+    });
+  }, []);
+
+  // サジェスト外クリックで候補を閉じる
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target as Node) &&
+        addressInputRef.current &&
+        !addressInputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // マウント時に自動で現在地を取得
   useEffect(() => {
@@ -77,6 +122,58 @@ export default function SpotPostForm({ onClose, onSubmit }: SpotPostFormProps) {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
     );
+  };
+
+  // 住所入力時にサジェストを取得（300msデバウンス）
+  const handleAddressChange = useCallback((value: string) => {
+    setAddress(value);
+    setSuggestions([]);
+    setShowSuggestions(false);
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    if (!value.trim() || !autocompleteServiceRef.current) {
+      setIsLoadingSuggestions(false);
+      return;
+    }
+
+    setIsLoadingSuggestions(true);
+    debounceTimerRef.current = setTimeout(() => {
+      autocompleteServiceRef.current!.getPlacePredictions(
+        { input: value, language: "ja" },
+        (predictions, status) => {
+          setIsLoadingSuggestions(false);
+          if (
+            status === google.maps.places.PlacesServiceStatus.OK &&
+            predictions &&
+            predictions.length > 0
+          ) {
+            setSuggestions(predictions);
+            setShowSuggestions(true);
+          }
+        }
+      );
+    }, 300);
+  }, []);
+
+  // 候補を選択したとき住所と座標を更新
+  const handleSuggestionSelect = (prediction: google.maps.places.AutocompletePrediction) => {
+    setAddress(prediction.description);
+    setSuggestions([]);
+    setShowSuggestions(false);
+
+    if (geocoderRef.current) {
+      geocoderRef.current.geocode(
+        { placeId: prediction.place_id },
+        (results, status) => {
+          if (status === google.maps.GeocoderStatus.OK && results?.[0]) {
+            const loc = results[0].geometry.location;
+            setLatitude(loc.lat());
+            setLongitude(loc.lng());
+          }
+        }
+      );
+    }
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,18 +289,112 @@ export default function SpotPostForm({ onClose, onSubmit }: SpotPostFormProps) {
               </div>
             </div>
 
-            {/* 住所編集 */}
+            {/* 住所編集（オートコンプリート付き） */}
             <div className="bg-gradient-to-br from-gray-800/60 to-gray-700/60 rounded-xl p-4">
               <label className="block text-xs text-gray-400 mb-2">住所を修正する場合は編集してください</label>
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-green-400 flex-shrink-0" />
-                <input
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="flex-1 bg-transparent text-gray-200 text-sm focus:outline-none"
-                  placeholder="住所"
-                />
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-green-400 flex-shrink-0" />
+                  <input
+                    ref={addressInputRef}
+                    type="text"
+                    value={address}
+                    onChange={(e) => handleAddressChange(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    className="flex-1 bg-transparent text-gray-200 text-sm focus:outline-none"
+                    placeholder="住所を入力してください"
+                    autoComplete="off"
+                  />
+                  {isLoadingSuggestions && (
+                    <Loader2 className="w-3 h-3 text-gray-400 animate-spin flex-shrink-0" />
+                  )}
+                </div>
+
+                {/* サジェスト候補ドロップダウン */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div
+                    ref={suggestionsRef}
+                    className="absolute left-0 right-0 top-full mt-2 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl z-10 overflow-hidden"
+                  >
+                    {suggestions.map((prediction) => (
+                      <button
+                        key={prediction.place_id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSuggestionSelect(prediction);
+                        }}
+                        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-700/70 transition-colors border-b border-gray-700/50 last:border-b-0"
+                      >
+                        <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-gray-200 text-sm font-medium truncate">
+                            {prediction.structured_formatting.main_text}
+                          </div>
+                          <div className="text-gray-400 text-xs truncate">
+                            {prediction.structured_formatting.secondary_text}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 位置情報なしで住所を直接入力する場合 */}
+        {latitude === null && !isGettingLocation && (
+          <div className="bg-gradient-to-r from-gray-800/40 to-gray-700/40 border border-gray-600/30 rounded-2xl p-6 mb-6">
+            <label className="block text-xs text-gray-400 mb-2">住所を入力してください</label>
+            <div className="bg-gradient-to-br from-gray-800/60 to-gray-700/60 rounded-xl p-4">
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <input
+                    ref={addressInputRef}
+                    type="text"
+                    value={address}
+                    onChange={(e) => handleAddressChange(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    className="flex-1 bg-transparent text-gray-200 text-sm focus:outline-none"
+                    placeholder="住所を入力してください"
+                    autoComplete="off"
+                  />
+                  {isLoadingSuggestions && (
+                    <Loader2 className="w-3 h-3 text-gray-400 animate-spin flex-shrink-0" />
+                  )}
+                </div>
+
+                {showSuggestions && suggestions.length > 0 && (
+                  <div
+                    ref={suggestionsRef}
+                    className="absolute left-0 right-0 top-full mt-2 bg-gray-800 border border-gray-600/50 rounded-xl shadow-2xl z-10 overflow-hidden"
+                  >
+                    {suggestions.map((prediction) => (
+                      <button
+                        key={prediction.place_id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSuggestionSelect(prediction);
+                        }}
+                        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-700/70 transition-colors border-b border-gray-700/50 last:border-b-0"
+                      >
+                        <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="text-gray-200 text-sm font-medium truncate">
+                            {prediction.structured_formatting.main_text}
+                          </div>
+                          <div className="text-gray-400 text-xs truncate">
+                            {prediction.structured_formatting.secondary_text}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
