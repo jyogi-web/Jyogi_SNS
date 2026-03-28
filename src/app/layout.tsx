@@ -33,9 +33,9 @@ export const metadata: Metadata = {
     description: "JyogiSNS - 瞬間で繋がるSNS",
   },
   icons: {
-    icon: "/tikuru24-favicon.ico",
-    shortcut: "/tikuru24-icon-192.png",
-    apple: "/tikuru24-icon-192.png",
+    icon: "/favicon.ico",
+    shortcut: "/JyogiIcon.png",
+    apple: "/JyogiIcon.png",
   },
 };
 

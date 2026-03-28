@@ -736,13 +736,13 @@ function ProfilePageContent() {
                           ? (() => {
                               const date = new Date(formData.joinDate);
                               if (isNaN(date.getTime())) {
-                                return "Tikuru24を利用してます。";
+                                return "JyogiSNSを利用してます。";
                               }
                               const year = date.getFullYear();
                               const month = date.getMonth() + 1;
-                              return `${year}年${month}月から Tikuru24を利用してます。`;
+                              return `${year}年${month}月から JyogiSNSを利用してます。`;
                             })()
-                          : "Tikuru24を利用してます。"
+                          : "JyogiSNSを利用してます。"
                         }
                       </span>
                     </div>

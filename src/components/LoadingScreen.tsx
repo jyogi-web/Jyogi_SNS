@@ -206,11 +206,11 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           {/* 外側のグロー */}
           <div className={`absolute inset-0 ${selectedTheme.glow} rounded-full blur-2xl scale-150 animate-pulse`}></div>
           
-          {/* メインアイコン - Tikuru24logo.pngを使用 */}
+          {/* メインアイコン - ロゴ画像を使用 */}
           <div className={`relative w-28 h-28 bg-gradient-to-br ${selectedTheme.iconBg} rounded-full flex items-center justify-center shadow-2xl p-4`}>
             <Image
               src="/Tikuru24logo.png"
-              alt="Tikuru24"
+              alt="JyogiSNS"
               width={80}
               height={80}
               className="w-20 h-20 object-contain drop-shadow-lg"
@@ -225,7 +225,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
 
         {/* アプリ名 */}
         <h1 className={`text-5xl font-bold mb-3 bg-gradient-to-r ${selectedTheme.titleGradient} bg-clip-text text-transparent animate-pulse`}>
-          Tikuru24
+          JyogiSNS
         </h1>
         
         {/* サブタイトル */}
