@@ -494,9 +494,9 @@ export default function UserProfilePage() {
                           const date = new Date(posts[posts.length - 1].created_at);
                           const year = date.getFullYear();
                           const month = date.getMonth() + 1;
-                          return `${year}年${month}月から Tikuru24を利用してます。`;
+                          return `${year}年${month}月から JyogiSNSを利用してます。`;
                         })()
-                      : "Tikuru24を利用してます。"
+                      : "JyogiSNSを利用してます。"
                     }
                   </span>
                 </div>

@@ -1,20 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { CloudSun, Home, Map, List, Plus } from "lucide-react";
+import { MapPin, Home, Map, List, Plus } from "lucide-react";
 import { ViewMode } from "../types";
 
-interface WeatherHeaderProps {
+interface MapHeaderProps {
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   onCreatePost: () => void;
 }
 
-export default function WeatherHeader({
+export default function MapHeader({
   viewMode,
   setViewMode,
   onCreatePost,
-}: WeatherHeaderProps) {
+}: MapHeaderProps) {
   const router = useRouter();
 
   return (
@@ -32,8 +32,8 @@ export default function WeatherHeader({
             </button>
 
             <div className="flex items-center gap-3">
-              <CloudSun className="w-8 h-8 text-blue-400" />
-              <h1 className="text-2xl font-bold">天気Yohoo!投稿</h1>
+              <MapPin className="w-8 h-8 text-green-400" />
+              <h1 className="text-2xl font-bold">おすすめスポット</h1>
             </div>
           </div>
 
@@ -82,8 +82,8 @@ export default function WeatherHeader({
             </button>
 
             <div className="flex items-center gap-2">
-              <CloudSun className="w-6 h-6 text-blue-400" />
-              <h1 className="text-lg font-bold">天気Yohoo!</h1>
+              <MapPin className="w-6 h-6 text-green-400" />
+              <h1 className="text-lg font-bold">おすすめスポット</h1>
             </div>
 
             <button

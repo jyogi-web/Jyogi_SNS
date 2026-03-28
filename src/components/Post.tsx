@@ -7,8 +7,6 @@ import {
   Share,
   MoreHorizontal,
   Smile,
-  X,
-  Plus, // 🚀 Plusアイコンを追加
 } from "lucide-react";
 // 🔧 共通型定義をインポート
 import { PostComponentType, ReplyType, StanpType } from "@/types/post";
@@ -46,7 +44,6 @@ export default function Post({
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [showReplies, setShowReplies] = useState(false);
   const [showAllReplies, setShowAllReplies] = useState(false); // 🚀 全リプライ表示制御
-  const [showReactions, setShowReactions] = useState(false); // 🚀 リアクション表示制御 - デフォルトを false に変更
   const [replyText, setReplyText] = useState("");
   const [replyLoading, setReplyLoading] = useState(false);
   const [showStampPicker, setShowStampPicker] = useState(false);
@@ -320,8 +317,6 @@ export default function Post({
     : localReplies.slice(0, INITIAL_REPLY_COUNT);
   const hiddenRepliesCount = Math.max(0, localReplies.length - INITIAL_REPLY_COUNT);
 
-  // リアクション数を計算
-  const totalReactions = Object.values(stanpCountMap).reduce((sum, count) => sum + count, 0);
   const visibleReactions = stampList.filter((url) => (stanpCountMap[url] || 0) > 0);
 
   // リプライ入力欄のアイコン表示部分を修正
@@ -503,27 +498,14 @@ export default function Post({
               <span className="text-sm font-medium">{post.likes > 0 ? post.likes : ""}</span>
             </button>
 
-            {/* 🚀 リアクションボタン（表示/非表示切り替え） */}
+            {/* リアクション追加ボタン */}
             <button
-              className={`flex items-center space-x-2 transition-colors group ${
-                showReactions && totalReactions > 0 ? "text-yellow-400" : "text-gray-500 hover:text-yellow-400"
-              }`}
-              onClick={() => {
-                if (totalReactions > 0) {
-                  setShowReactions(!showReactions);
-                } else {
-                  setShowStampPicker(!showStampPicker);
-                }
-              }}
+              className="flex items-center space-x-2 text-gray-500 hover:text-yellow-400 transition-colors group"
+              onClick={() => setShowStampPicker(!showStampPicker)}
             >
-              <div className={`p-2 rounded-full transition-colors ${
-                showReactions && totalReactions > 0 ? "bg-yellow-500/10" : "group-hover:bg-yellow-500/10"
-              }`}>
+              <div className="p-2 rounded-full group-hover:bg-yellow-500/10 transition-colors">
                 <Smile size={20} />
               </div>
-              <span className="text-sm font-medium">
-                {totalReactions > 0 ? totalReactions : ""}
-              </span>
             </button>
 
             {/* ブックマークボタン */}
@@ -552,6 +534,33 @@ export default function Post({
               </div>
             </button>
           </div>
+
+          {/* Discord風インラインリアクション */}
+          {visibleReactions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {visibleReactions.map((url) => {
+                const count = stanpCountMap[url] || 0;
+                const isMine = !!currentUserId && localStanps.some(
+                  (s) => s.user_id === currentUserId && s.stanp_url === url
+                );
+                return (
+                  <button
+                    key={url}
+                    onClick={() => handleAddStanp(url)}
+                    disabled={loading}
+                    className={`flex items-center space-x-1 px-2 py-1 rounded-full border transition-all ${
+                      isMine
+                        ? "bg-blue-500/20 border-blue-400/50 text-blue-300"
+                        : "bg-gray-800/60 border-gray-600/40 text-gray-300 hover:bg-gray-700/60 hover:border-gray-500/60"
+                    } ${loading ? "opacity-50" : ""}`}
+                  >
+                    <img src={getImageUrl(url)} alt="stamp" className="w-10 h-10 object-contain" />
+                    <span className="text-xs font-medium">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* 🚀 改善されたインタラクションエリア */}
           <div className="mt-3">
@@ -743,74 +752,6 @@ export default function Post({
               </div>
             )}
 
-            {/* 🚀 リアクションセクション（表示/非表示対応） - 条件を調整 */}
-            {showReactions && (
-              <div className="mt-3">
-                <div className="bg-gray-900/30 border border-gray-700/30 rounded-xl p-4">
-                  {/* リアクションヘッダー */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <Smile size={16} className="text-yellow-400" />
-                      <span className="text-sm text-gray-300 font-medium">
-                        リアクション ({totalReactions})
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setShowReactions(false)}
-                      className="text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  {/* リアクション一覧と追加ボタン */}
-                  <div className="flex flex-wrap gap-3">
-                    {/* 既存のリアクション */}
-                    {visibleReactions.map((url) => {
-                      const count = stanpCountMap[url] || 0;
-                      const isMine =
-                        !!currentUserId &&
-                        localStanps.some(
-                          (s) => s.user_id === currentUserId && s.stanp_url === url
-                        );
-                      
-                      return (
-                        <button
-                          key={url}
-                          className={`group flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-300 text-base border-2 ${
-                            isMine
-                              ? "bg-blue-500/20 border-blue-400/60 text-blue-300 shadow-lg shadow-blue-500/20"
-                              : "bg-gray-800/50 border-gray-600/40 text-gray-300 hover:bg-gray-700/50 hover:border-gray-500/60"
-                          } ${loading ? 'opacity-50' : 'hover:scale-110 hover:shadow-lg'}`}
-                          onClick={() => handleAddStanp(url)}
-                          disabled={loading}
-                        >
-                          <img
-                            src={getImageUrl(url)}
-                            alt="stamp"
-                            className="w-10 h-10 object-contain"
-                          />
-                          <span className="font-bold text-base min-w-[20px] text-center">
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    
-                    {/* 🚀 リアクション追加ボタン（常に表示） */}
-                    <button
-                      onClick={() => setShowStampPicker(!showStampPicker)}
-                      className="flex items-center justify-center w-16 h-16 rounded-xl border-2 border-dashed border-gray-600/60 text-gray-400 hover:border-gray-500/80 hover:text-gray-300 hover:bg-gray-800/30 transition-all duration-300 group"
-                      title="リアクションを追加"
-                    >
-                      <Plus size={24} className="group-hover:scale-110 transition-transform duration-300" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 🚀 リアクションがない場合の追加ボタンも削除 */}
 
             {/* 🚀 改善されたスタンプピッカー（モーダル風） */}
             {showStampPicker && (

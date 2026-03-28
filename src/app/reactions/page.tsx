@@ -16,7 +16,7 @@ import {
   Save,
   RotateCcw,
   RotateCw,
-  Hourglass,
+
   Upload,
   ImageIcon,
   AlertCircle,
@@ -40,6 +40,7 @@ interface DrawingAction {
 export default function ReactionsPage() {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentColor, setCurrentColor] = useState("#FF6B6B");
   const [brushSize, setBrushSize] = useState(10);
@@ -147,60 +148,91 @@ export default function ReactionsPage() {
     setHistoryIndex(0);
   }, []);
 
+  const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = getCanvasPoint(e);
+    lastPointRef.current = { x, y };
+    setIsDrawing(true);
 
-    drawPoint(x, y);
+    // クリックのみ（ドラッグなし）でも点を打つ
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = brushSize;
+    if (activeTool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = currentColor;
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+    if (activeTool === "eraser") {
+      ctx.fill();
+    } else {
+      ctx.fillStyle = currentColor;
+      ctx.fill();
+    }
+    if (activeTool === "eraser") ctx.globalCompositeOperation = "source-over";
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (!isDrawing || !lastPointRef.current) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    drawPoint(x, y);
+    const { x, y } = getCanvasPoint(e);
+    drawLine(lastPointRef.current.x, lastPointRef.current.y, x, y);
+    lastPointRef.current = { x, y };
   };
 
-  const drawPoint = (x: number, y: number) => {
+  const drawLine = (fromX: number, fromY: number, toX: number, toY: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = brushSize;
+
     if (activeTool === "eraser") {
-      // 消しゴム機能：白い円で描画して消去
       ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath();
-      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.closePath();
-      ctx.globalCompositeOperation = "source-over"; // 通常の描画モードに戻す
+      ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
-      // ブラシ機能：通常の描画
       ctx.globalCompositeOperation = "source-over";
-      ctx.beginPath();
-      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
-      ctx.fillStyle = currentColor;
-      ctx.fill();
-      ctx.closePath();
+      ctx.strokeStyle = currentColor;
     }
+
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+
+    if (activeTool === "eraser") ctx.globalCompositeOperation = "source-over";
   };
 
   const stopDrawing = () => {
     if (isDrawing) {
       setIsDrawing(false);
+      lastPointRef.current = null;
       saveToHistory();
     }
   };
@@ -464,23 +496,7 @@ export default function ReactionsPage() {
     alert("スタンプがクラウドに保存されました！");
   };
 
-  // 24時間後までの残り時間を計算する関数
-  function getRemainingTime(createdAt: string): string {
-    const created = new Date(createdAt).getTime();
-    const expires = created + 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const diff = expires - now;
-    if (diff <= 0) return "00:00:00";
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return `${hours.toString().padStart(2, "0")}:${minutes
-      .toString()
-      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-  }
-
-  // --- スタンプ一覧の取得と表示例（仮） ---
-  // ここではmake_stampテーブルのデータを取得し、砂時計＋残り時間を表示する例を追加します。
+  // --- スタンプ一覧の取得と表示 ---
   const [stamps, setStamps] = useState<any[]>([]);
   useEffect(() => {
     const fetchStamps = async () => {
@@ -865,12 +881,7 @@ export default function ReactionsPage() {
                     {historyIndex + 1} / {history.length}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">残り時間:</span>
-                  <span className="text-white font-semibold">
-                    {getRemainingTime(new Date().toISOString())}
-                  </span>
-                </div>
+
               </div>
             </div>
 
@@ -886,12 +897,6 @@ export default function ReactionsPage() {
                     alt="stamp"
                     className="w-16 h-16 rounded-lg border border-gray-600"
                   />
-                  <div className="flex items-center space-x-2">
-                    <Hourglass size={20} className="text-yellow-400" />
-                    <span className="text-lg font-mono text-yellow-200">
-                      {getRemainingTime(stamp.created_at)}
-                    </span>
-                  </div>
                 </div>
               ))}
             </div>

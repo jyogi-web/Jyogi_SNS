@@ -1,127 +1,191 @@
-# Tikuru24
+# Jyogi SNS
 
-**Tikuru24** は、24時間で消える投稿を中心とした、リアルタイムコミュニケーション特化型のソーシャルネットワークサービス（SNS）です。
+Jyogi SNS は、Tikuru24 をフォークして部内利用向けに改造した SNS です。
+リアルタイム投稿、DM、通知、検索、プロフィール、AI チャット、地図投稿、ボイスチャットを 1 つのアプリに統合しています。
 
----
+## 重要: 24時間自動削除について
 
-## 概要
+このリポジトリでは「投稿が 24 時間で自動削除される機能」は現在無効です。
 
-Tikuru24 は「24時間」という時間制限を軸にした SNS プラットフォームです。投稿は作成から24時間が経過すると自動的に消えるため、気軽に発信しやすい環境を提供します。テキスト・画像投稿に加え、AI チャット・天気共有・ボイスチャットなど、多彩なコミュニケーション手段を備えています。
+- 投稿は自動削除されません（手動削除のみ）
+- 24時間関連の表示やロジックが一部画面に残っています（下記参照）
+- README は「現在の実装」を優先して記載しています
 
-### 主な特徴
+### 無料枠運用向けの外部開発について
 
-- **24時間投稿** — 投稿はタイムライン上にカウントダウン付きで表示され、24時間後に自動削除されます
-- **リアルタイム更新** — Supabase Realtime を利用したリアルタイムフィード更新
-- **マルチメディア対応** — テキスト・画像・スタンプリアクション・カメラキャプチャによる投稿に対応
-- **PWA 対応** — スマートフォンへインストール可能なプログレッシブウェブアプリ
-- **プッシュ通知** — ブラウザプッシュ通知によるリアルタイムアラート
+Supabase と Cloudflare R2 の無料枠に収めるため、
+「過去投稿のDB自動削除 + バックアップ」機能は別リポジトリで開発中です。
 
----
+- 開発リポジトリ: https://github.com/tyumu/Jyogi_SNS_backup
+- 目的: ストレージ/DB容量の圧迫を抑えつつ、必要データを退避して運用継続すること
 
-## 機能一覧
+### 残存している24時間関連（2026-03時点）
 
-### コア SNS 機能
+- DMチャット画面 (`/messages/[userId]`)
+	- 各メッセージに砂時計アイコンと「24時間ベースの残り時間」を表示
+- 投稿フォーム (`PostForm`)
+	- 「24時間以内に投稿しないと制限」系のBANロジックと文言が残存
+	- モーダルにも24時間関連メッセージを表示
+- ホーム画面 (`/`)
+	- 24時間経過を前提とした期限切れチェックのデバッグログが残存（表示UIではなくログ）
 
-#### ホームフィード
-- 24時間限定の投稿をタイムライン形式で表示
-- 残り時間をカウントダウンで確認可能
-- リアルタイムで新着投稿が反映される
+注: 認証画面の「リンク期限切れ」表示は認証トークン期限の話であり、投稿TTLとは別です。
 
-#### 投稿
-- テキスト投稿・画像添付・タグ付けに対応
-- 楽観的 UI による即時反映でストレスフリーな投稿体験
+## 削除予定一覧（24時間関連 + TikuriBAR + Glok）
 
-#### リアクション・スタンプ
-- Discord ライクなカスタム絵文字スタンプによるリアクション機能
-- スタンプ一覧ページからリアクション履歴を閲覧可能
+以下は「削除予定機能」として、現時点でコード上に残っている主な箇所です。
 
-#### いいね・ブックマーク
-- 投稿へのいいね
-- ブックマーク保存（後から見返す用）
+### A. 24時間関連（投稿TTL/24h表示）
 
-#### リプライ
-- 投稿へのネスト形式コメント
+- DMチャット画面
+	- `src/app/messages/[userId]/page.tsx`
+	- 残り時間計算 (`24 * 60 * 60 * 1000`) と砂時計表示
+- 投稿フォーム
+	- `src/components/PostForm.tsx`
+	- 24時間未投稿時のBANロジック、24時間関連モーダル文言
+- ホーム画面
+	- `src/app/page.tsx`
+	- 24時間経過チェックのデバッグログ（表示UIではなくログ）
 
-#### 検索
-- 投稿・ユーザーのキーワード検索
+### B. TikuriBAR（音声/チャット）
 
-#### ギャラリー
-- 画像付き投稿をギャラリービューで一覧表示
+- 画面本体
+	- `src/app/tikuribar/page.tsx`
+	- `src/app/tikuribar/test/page.tsx`
+- クライアント側フック
+	- `src/app/tikuribar/hooks/useWebSocket.ts`
+	- `src/app/tikuribar/hooks/useBarAudio.ts`
+- WebSocketサーバー実装
+	- `src/scripts/startTikuriBarServer.ts`
+	- `src/lib/tikuribar/websocketServer.ts`
+- 他画面からの参照
+	- `src/app/search/page.tsx`（TikuriBARライブ表示、WS接続、遷移）
+	- `src/components/Sidebar.tsx`（`/tikuribar` ナビ項目）
+	- `src/components/MobileExtendedNavigation.tsx`（`/tikuribar` ナビ項目）
+	- `src/app/tutorial/data.ts`（TikuriBARチュートリアル定義）
 
-#### ユーザープロフィール
-- プロフィール情報（アイコン・ユーザー名・自己紹介）の閲覧・編集
-- 自分の投稿履歴の確認
+### C. Glok（AIチャット）
 
----
+- 画面本体/配下実装
+	- `src/app/glok/page.tsx`
+	- `src/app/glok/types.ts`
+	- `src/app/glok/components/*`
+	- `src/app/glok/hooks/*`
+	- `src/app/glok/globals.css`
+- API連携
+	- `src/app/api/gemini-api/route.ts`
+- 他画面からの参照
+	- `src/components/Sidebar.tsx`（`/glok` ナビ項目）
+	- `src/components/MobileExtendedNavigation.tsx`（`/glok` ナビ項目）
+	- `src/app/tutorial/data.ts`（Glokチュートリアル定義）
 
-### 特徴的な機能
+### 補足
 
-#### Glok（AI チャット）
-- Google Gemini 2.0 Flash を利用した AI との会話機能
-- チャット履歴はブラウザのローカルストレージに保存
-- スレッド管理・削除に対応
+- この一覧は「削除対象の棚卸し」です。
+- 実際の削除時は、画面本体だけでなくナビゲーション・チュートリアル・関連API・補助スクリプトの参照切れを同時に解消してください。
 
-#### 天気 Yohoo!（天気共有）
-- 位置情報と Google Maps を連携した天気投稿機能
-- 気温・湿度・視程などの気象データを投稿
-- マップビュー・リストビューの切り替え対応
-- 天気投稿へのコメント機能
+## 実装機能一覧（現状ベース）
 
-#### TikuriBAR（ボイスチャット）
-- WebSocket を用いたリアルタイムボイスチャット
-- 音声レベルのビジュアライザー表示
-- 複数のバールーム対応
-- 通知音・効果音あり
+### SNS コア
 
-#### REALction（リアルタイムリアクションカメラ）
-- カメラで撮影したリアクション画像を投稿に添付する機能
-
----
+| 機能 | 状態 | 備考 |
+|---|---|---|
+| 投稿作成（テキスト/画像/タグ） | 実装済み | 画像は `/api/upload` 経由で R2 に保存 |
+| タイムライン表示 | 実装済み | `todos` を新着順で表示、Realtime 連携あり |
+| いいね | 実装済み | `likes` と `todos.likes` を更新 |
+| ブックマーク | 実装済み | `bookmarks` の on/off 管理 |
+| リプライ | 実装済み | `replies` へ保存、楽観的更新あり |
+| スタンプリアクション | 実装済み | `stamp` と `make_stamp` を利用 |
+| 投稿検索 | 実装済み | `/api/search` + Supabase RPC `search_todos_pgroonga` |
+| ユーザー検索 | 実装済み | DM画面・検索画面でユーザー一覧を利用 |
 
 ### コミュニケーション
 
-#### ダイレクトメッセージ（DM）
-- ユーザー間の 1 対 1 メッセージ機能
+| 機能 | 状態 | 備考 |
+|---|---|---|
+| 通知一覧 | 実装済み | `notifications` を取得し既読管理 |
+| プッシュ通知 | 実装済み | `push_subscriptions` と Web Push API |
+| いいね通知送信 | 実装済み | `/api/send-like-notification` |
+| DM（1対1） | 実装済み | `messages` テーブル + Realtime |
+| DM 一覧UI | 部分実装 | 一覧画面に「準備中」表現が一部残存 |
 
-#### 通知
-- いいね・リプライ・メンション・システム通知
-- 通知設定のカスタマイズ対応
+### 拡張機能
 
----
+| 機能 | 状態 | 備考 |
+|---|---|---|
+| Glok（AIチャット） | 実装済み | `/api/gemini-api`、履歴は localStorage |
+| Map（スポット投稿） | 実装済み | Google Maps API 利用、投稿・いいね対応 |
+| ニュース表示 | 実装済み | `/api/news` で RSS 取得（失敗時フォールバック） |
+| TikuriBAR（音声/チャット） | 実装済み | WebSocket（`NEXT_PUBLIC_WS_URL`） |
+| REALction（カメラ投稿） | 実装済み | カメラ撮影/アップロード、ギャラリー連携 |
+| Reactions（お絵描き） | 実装済み | キャンバス描画 + 画像アップロード |
+
+## 主要画面ルート
+
+- `/` ホーム
+- `/auth/login`, `/auth/signup`, `/auth/reset-password`, `/auth/verify`
+- `/messages`, `/messages/[userId]`
+- `/notifications`
+- `/bookmarks`
+- `/search`
+- `/gallery`
+- `/profile`, `/profile/[userId]`
+- `/settings`
+- `/glok`
+- `/map`
+- `/tikuribar`
+- `/realction`
+- `/reactions`
+- `/tutorial`, `/tutorial/[feature]`, `/tutorial/complete`
+
+## API エンドポイント
+
+| Method | Path | 用途 |
+|---|---|---|
+| GET | `/api/news` | RSS ニュース取得 |
+| GET | `/api/search` | 投稿検索（PGroonga RPC） |
+| POST | `/api/gemini-api` | AI 応答生成 |
+| POST | `/api/send-notification` | Web Push 通知送信 |
+| POST | `/api/send-like-notification` | いいね通知作成 + Push |
+| GET | `/api/vapid-public-key` | VAPID 公開鍵返却 |
+| POST | `/api/upload` | 画像アップロード（R2） |
+| POST | `/api/upload-reaction` | リアクション画像アップロード |
+| GET/POST | `/api/upload-stamp` | スタンプ一覧/アップロード |
+| GET | `/api/stamp-url` | スタンプ取得用署名URL |
+| GET | `/api/realction/[id]` | REALction画像バイナリ取得 |
+| POST | `/api/upload-icon` | アイコンアップロードAPI（プレースホルダ設定、運用前要調整） |
 
 ## 技術スタック
 
-| カテゴリ | 技術 |
+| カテゴリ | 採用技術 |
 |---|---|
-| フロントエンド | Next.js 15 (App Router), React 19, TypeScript 5 |
+| フロントエンド | Next.js 16 (App Router), React 19, TypeScript 5 |
 | スタイリング | Tailwind CSS 4 |
-| バックエンド | Next.js API Routes (Node.js) |
-| データベース | Supabase (PostgreSQL) |
-| 認証 | Supabase Auth (Twitter/X OAuth) |
-| リアルタイム | Supabase Realtime |
-| ストレージ | Cloudflare R2 (画像) |
-| AI | Google Gemini 2.0 Flash |
+| BaaS | Supabase (Auth / Postgres / Realtime / Storage) |
+| ストレージ | Cloudflare R2 |
+| AI | Google Gemini API |
 | 地図 | Google Maps JavaScript API |
-| ボイスチャット | WebSocket (ws) |
-| プッシュ通知 | Web Push API |
-| アイコン | Lucide React |
-
----
+| 通知 | Service Worker + Web Push |
+| 音声/チャット | WebSocket (`ws`) |
 
 ## セットアップ
 
-### 必要な環境
+### 前提
 
-- Node.js 18 以上
+- Node.js 18 以上（推奨 20 以上）
+- npm
 - Supabase プロジェクト
-- Cloudflare R2 バケット
-- Google Gemini API キー
-- Google Maps API キー
-- VAPID キー（Web Push 用）
+- Cloudflare R2
+
+### インストール
+
+```bash
+npm install
+```
 
 ### 環境変数
 
-プロジェクトルートに `.env.local` を作成し、以下の変数を設定してください。
+ルートに `.env.local` を作成し、少なくとも以下を設定してください。
 
 ```env
 # Supabase
@@ -129,65 +193,106 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Cloudflare R2
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=
-R2_ACCOUNT_ID=
-
-# Google API
+# Gemini
 GEMINI_API_KEY=
+
+# Maps
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
+NEXT_PUBLIC_DEFAULT_CENTER=35.681236,139.767125
+NEXT_PUBLIC_MAPS_LANG=ja
+NEXT_PUBLIC_MAPS_REGION=JP
+
+# R2 (実装は R2_TEMP_* を参照)
+R2_TEMP_ENDPOINT=
+R2_TEMP_ACCESS_KEY_ID=
+R2_TEMP_SECRET_ACCESS_KEY=
+R2_TEMP_BUCKET_NAME=
 
 # Web Push
-WEB_PUSH_VAPID_PUBLIC_KEY=
-WEB_PUSH_VAPID_PRIVATE_KEY=
+NEXT_PUBLIC_VAPID_KEY=
+VAPID_PRIVATE_KEY=
+
+# TikuriBAR
+NEXT_PUBLIC_WS_URL=ws://localhost:8080
+
+# Optional
+LOG_LEVEL=INFO
 ```
 
-### インストール・起動
+### 起動
 
 ```bash
-# 依存パッケージのインストール
-npm install
-
-# 開発サーバーの起動
 npm run dev
 ```
 
-`http://localhost:3000` をブラウザで開いてください。
+ブラウザで `http://localhost:3000` を開いてください。
 
-### ビルド・本番起動
+### ビルド
 
 ```bash
 npm run build
-npm start
+npm run start
 ```
 
----
+## 新規共同開発者向けガイド
 
-## ディレクトリ構成
+### 0. 最初に読むファイル
 
+- `README.md`（このファイル）
+- `docs/01_feature-list.md` 〜 `docs/09_schedule_and_issues.md`
+- `docs/create_tables.sql`（DB 初期構築の参考）
+
+### 1. 初日セットアップ手順
+
+1. リポジトリを clone して `npm install` を実行
+2. `.env.local` を作成し、上記環境変数を設定
+3. `npm run dev` で起動
+4. ログイン/サインアップ、投稿、いいね、DM、通知画面を一通り確認
+
+### 2. TikuriBAR 開発時の追加手順
+
+TikuriBAR は Next.js サーバーとは別に WebSocket サーバーを使います。
+
+```bash
+npx tsx src/scripts/startTikuriBarServer.ts
 ```
-src/
-├── app/
-│   ├── api/          # バックエンド API ルート
-│   ├── auth/         # 認証ページ（ログイン・サインアップ等）
-│   ├── glok/         # AI チャット
-│   ├── weather/      # 天気 Yohoo!
-│   ├── tikuribar/    # TikuriBAR（ボイスチャット）
-│   ├── messages/     # ダイレクトメッセージ
-│   ├── notifications/ # 通知
-│   ├── bookmarks/    # ブックマーク
-│   ├── gallery/      # ギャラリー
-│   ├── reactions/    # リアクション一覧
-│   ├── realction/    # REALction
-│   ├── search/       # 検索
-│   ├── profile/      # ユーザープロフィール
-│   ├── settings/     # 設定
-│   └── page.tsx      # ホームフィード
-├── components/       # 共通 React コンポーネント
-├── contexts/         # React Context（認証状態等）
-├── hooks/            # カスタムフック
-├── lib/              # ライブラリ設定（Supabase 等）
-└── types/            # TypeScript 型定義
+
+`NEXT_PUBLIC_WS_URL` を接続先に合わせて設定してください。
+
+### 3. 実装確認の最低チェックリスト
+
+- ログイン/ログアウトできる
+- ホームで投稿作成・いいね・ブックマーク・リプライができる
+- 検索タブで検索できる
+- DM 送受信できる
+- 通知一覧が取得できる
+- 設定画面で通知設定を保存できる
+
+### 4. 日常開発コマンド
+
+```bash
+npm run dev
+npm run lint
+npm run build
 ```
+
+## データモデル（主要テーブル）
+
+- `usels` ユーザープロフィール
+- `todos` 投稿
+- `likes` いいね
+- `bookmarks` ブックマーク
+- `replies` リプライ
+- `stamp` / `make_stamp` スタンプ
+- `notifications` 通知
+- `notification_settings` 通知設定
+- `push_subscriptions` Push 購読情報
+- `messages` DM
+- `follows` フォロー
+- `realction` リアクション画像
+
+## 現在の注意点
+
+- 24時間自動削除は無効です（削除は手動）
+- 24時間関連の残存は「DM残り時間表示」「投稿フォームの24時間BAN文言/ロジック」「ホームのデバッグログ」です
+- `/api/upload-icon` はプレースホルダ定数が残っているため、運用前に実値へ置換が必要です

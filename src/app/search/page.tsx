@@ -11,6 +11,7 @@ import {
   Clock,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
+import TutorialModal from "@/components/TutorialModal";
 import { supabase } from "@/utils/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -515,7 +516,7 @@ const handleLoadMore = () => {
         (todo) =>
           todo.user_id !== userId &&
           ((todo.tags || []).some((tag) => userTags.includes(tag)) ||
-            userWords.some((word) => todo.title.includes(word))),
+            userWords.some((word) => (todo.title ?? "").includes(word))),
       ),
     );
   }, [userId, todos, userTags, userWords]);
@@ -578,6 +579,7 @@ const handleLoadMore = () => {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <TutorialModal featureId="search" />
       <div className="max-w-7xl mx-auto flex h-screen">
         {/* デスクトップ: 左サイドバー */}
         <div className="hidden lg:block w-64 flex-shrink-0">

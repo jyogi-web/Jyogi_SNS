@@ -10,9 +10,10 @@ import {
   LogOut,
   Clock,
   Heart,
-  CloudSun,
+  MapPin,
   Wine,
   Camera,
+  GraduationCap,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
@@ -90,8 +91,9 @@ export default function Sidebar() {
     { icon: Clock, label: "Clock", href: "/glok" },
     { icon: Heart, label: "リアクション", href: "/reactions" },
     { icon: Camera, label: "REALction", href: "/realction" },
-    { icon: CloudSun, label: "天気Yohoo!", href: "/weather" },
+    { icon: MapPin, label: "おすすめスポット", href: "/map" },
     { icon: Wine, label: "TikuriBAR", href: "/tikuribar" },
+    { icon: GraduationCap, label: "使い方ガイド", href: "/tutorial" },
     { icon: User, label: "プロフィール", href: "/profile" },
     { icon: Settings, label: "設定", href: "/settings" },
   ];
@@ -113,7 +115,7 @@ export default function Sidebar() {
     <div className="hidden lg:flex lg:flex-col lg:w-64 lg:h-screen lg:border-r lg:border-gray-800 lg:sticky lg:top-0 lg:overflow-hidden lg:z-10 lg:bg-black">
       {/* ロゴ */}
       <div className="flex-shrink-0 p-4 relative z-10">
-        <h1 className="text-2xl font-bold text-white">Tikuru24</h1>
+        <h1 className="text-2xl font-bold text-white">JyogiSNS</h1>
       </div>
 
       {/* メニュー（スクロール可能） */}

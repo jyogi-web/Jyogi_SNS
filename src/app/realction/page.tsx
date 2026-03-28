@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Camera, Home } from 'lucide-react';
+import TutorialModal from '@/components/TutorialModal';
 
 export default function Page() {
   const { user } = useAuth();
@@ -104,6 +105,7 @@ export default function Page() {
   // ログイン済みの場合の通常表示
   return (
     <div className={`${inter.className} ${notoJP.className}`} style={{ letterSpacing: 0.2 }}>
+      <TutorialModal featureId="realction" />
       {/* 背景レイヤー */}
       <div
         aria-hidden

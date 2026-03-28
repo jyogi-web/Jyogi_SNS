@@ -35,7 +35,7 @@ interface FormData {
   follower: number;
   iconUrl?: string;
   bannerUrl?: string;
-  isBunkatsu?: boolean;
+
 }
 
 // モーダルコンポーネント
@@ -145,7 +145,7 @@ function ProfilePageContent() {
     follower: 1200,
     iconUrl: undefined,
     bannerUrl: undefined,
-    isBunkatsu: false,
+
   });
   const [uploading, setUploading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
@@ -264,7 +264,7 @@ function ProfilePageContent() {
             follower: followerCount || 0,
             iconUrl: userData.icon_url,
             bannerUrl: userData.banner_url,
-            isBunkatsu: userData.isBunkatsu ?? false,
+
           });
         }
 
@@ -315,7 +315,7 @@ function ProfilePageContent() {
       site: formData.website, // 🔧 website → site に変更
       birth_date: formData.birthDate,
       follow: Number(formData.following) || 0,
-      isBunkatsu: formData.isBunkatsu ?? false,
+
     };
     const { error } = await supabase
       .from("usels")
@@ -667,34 +667,6 @@ function ProfilePageContent() {
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                {/* プライバシー設定 */}
-                <div className="bg-gray-900 rounded-xl p-4 mt-6">
-                  <h3 className="text-lg font-bold mb-4">プライバシー設定</h3>
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold text-white">
-                          24分割モード
-                        </div>
-                        <div className="text-sm text-gray-400">
-                          投稿を時間経過で分割表示する
-                        </div>
-                      </div>
-                      <label className="inline-flex items-center cursor-pointer relative">
-                        <input
-                          type="checkbox"
-                          checked={formData.isBunkatsu ?? false}
-                          onChange={(e) =>
-                            handleInputChange("isBunkatsu", e.target.checked)
-                          }
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
-                        <div className="absolute left-0 top-0 w-6 h-6 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform"></div>
-                      </label>
-                    </div>
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -764,13 +736,13 @@ function ProfilePageContent() {
                           ? (() => {
                               const date = new Date(formData.joinDate);
                               if (isNaN(date.getTime())) {
-                                return "Tikuru24を利用してます。";
+                                return "JyogiSNSを利用してます。";
                               }
                               const year = date.getFullYear();
                               const month = date.getMonth() + 1;
-                              return `${year}年${month}月から Tikuru24を利用してます。`;
+                              return `${year}年${month}月から JyogiSNSを利用してます。`;
                             })()
-                          : "Tikuru24を利用してます。"
+                          : "JyogiSNSを利用してます。"
                         }
                       </span>
                     </div>

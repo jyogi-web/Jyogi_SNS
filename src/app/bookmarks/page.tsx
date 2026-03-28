@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import TutorialModal from "@/components/TutorialModal";
 import Post from "@/components/Post";
 import { supabase } from "@/utils/supabase/client";
 import { PostType } from "@/types/post";
@@ -87,7 +88,7 @@ export default function BookmarksPage() {
           userIds.length > 0
             ? supabase
                 .from("usels")
-                .select("user_id, icon_url, username, setID, isBunkatsu") // 🔧 display_nameを削除、isBunkatsuを追加
+                .select("user_id, icon_url, username, setID")
                 .in("user_id", userIds)
             : Promise.resolve({ data: [], error: null }),
           
@@ -122,7 +123,7 @@ export default function BookmarksPage() {
             displayName: user.username || "User", // 🔧 ホーム画面と同じ
             setID: user.setID || "", // 🔧 ホーム画面と同じ
             username: user.username || "", // 🔧 ホーム画面と同じ
-            isBunkatsu: user.isBunkatsu ?? false,
+
           };
         });
 
@@ -361,6 +362,7 @@ export default function BookmarksPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      <TutorialModal featureId="bookmarks" />
       <div className="flex max-w-7xl mx-auto">
         {/* 左サイドバー */}
         <div className="w-64 flex-shrink-0 h-screen sticky top-0">

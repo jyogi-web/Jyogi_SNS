@@ -82,7 +82,7 @@ export default function LoginPage() {
           <div className="flex justify-center">
             <Image
               src="/Tikuru24logo.png"
-              alt="Tikuru24 Logo"
+              alt="JyogiSNS Logo"
               width={80}
               height={80}
               className="rounded-2xl"
