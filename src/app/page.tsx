@@ -146,8 +146,6 @@ export default function Home() {
         .order("created_at", { ascending: false })
         .limit(50);
 
-      console.log("🔍 Supabaseから取得した投稿数:", todosData?.length || 0);
-
       if (todosError) {
         console.error("Error fetching todos:", todosError);
         if (!silent) {
@@ -407,8 +405,7 @@ export default function Home() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "todos" },
-        (payload) => {
-          console.log("New post added:", payload);
+        () => {
           fetchTodosRef.current?.({ silent: true });
         }
       )

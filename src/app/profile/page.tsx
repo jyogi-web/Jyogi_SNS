@@ -643,7 +643,6 @@ function ProfilePageContent() {
         if (userError) {
           console.error("Error fetching user data:", userError);
         } else if (userData) {
-          console.log('🔍 userData.created_at:', userData.created_at); // デバッグログ
           setFormData({
             setID: userData.setID || userData.username || "user",
             displayName: userData.username || userData.display_name || "ユーザー",
@@ -1080,15 +1079,7 @@ function ProfilePageContent() {
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold">
-                    {formData.username
-                      ? formData.username
-                      : (() => {
-                          console.log(
-                            "[プロフィール] usernameが空です",
-                            formData
-                          );
-                          return "";
-                        })()}
+                    {formData.username || ""}
                   </h2>
                   <p className="text-gray-400">@{formData.setID}</p>
                 </div>
