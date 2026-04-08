@@ -142,20 +142,6 @@ export default function Home() {
         .limit(50);
 
       console.log("🔍 Supabaseから取得した投稿数:", todosData?.length || 0);
-      
-      if (todosData) {
-        // 期限切れ投稿の確認
-        const now = Date.now();
-        todosData.forEach((todo: any) => {
-          const created = new Date(todo.created_at).getTime();
-          const expires = created + 24 * 60 * 60 * 1000;
-          const hoursRemaining = (expires - now) / (1000 * 60 * 60);
-          
-          if (hoursRemaining <= 0) {
-            console.log(`⚠️ 期限切れ投稿が表示されています: ${todo.id} (${Math.abs(hoursRemaining).toFixed(1)}時間超過)`);
-          }
-        });
-      }
 
       if (todosError) {
         console.error("Error fetching todos:", todosError);
