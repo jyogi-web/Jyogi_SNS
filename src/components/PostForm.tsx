@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/utils/supabase/client";
 import { Image, Smile, Calendar, MapPin, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,6 +19,7 @@ export default function PostForm({
   r2PublicUrl 
 }: PostFormProps) {
   const { user } = useAuth();
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -344,14 +345,12 @@ export default function PostForm({
                     type="button"
                     className="hover:bg-blue-500/10 p-2 rounded-full transition-colors"
                     aria-label="画像を追加"
-                    onClick={() =>
-                      document.getElementById("image-upload")?.click()
-                    }
+                    onClick={() => imageInputRef.current?.click()}
                   >
                     <Image size={18} className="lg:w-5 lg:h-5" />
                   </button>
                   <input
-                    id="image-upload"
+                    ref={imageInputRef}
                     type="file"
                     accept="image/*"
                     style={{ display: "none" }}
