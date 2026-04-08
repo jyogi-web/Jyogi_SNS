@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/utils/supabase/client";
-import { Image, Smile, Calendar, MapPin, BarChart3, X, Clock, User } from "lucide-react";
+import { Image, Smile, Calendar, MapPin, BarChart3 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface PostFormProps {
@@ -23,11 +23,6 @@ export default function PostForm({
   const [tags, setTags] = useState<string[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [canPost, setCanPost] = useState<boolean>(true);
-  const [postError, setPostError] = useState<string>("");
-  const [remainingTime, setRemainingTime] = useState<string>("");
-  const [showBanModal, setShowBanModal] = useState<boolean>(false);
-  
   // ユーザープロフィール情報
   const [userProfile, setUserProfile] = useState<{
     icon_url?: string;
@@ -68,7 +63,7 @@ export default function PostForm({
         // ユーザーデータを取得
         const { data: userRow, error: userError } = await supabase
           .from("usels")
-          .select("icon_url, username, introduction, has_posted")
+          .select("icon_url, username, introduction")
           .eq("user_id", uid)
           .maybeSingle();
 
@@ -83,68 +78,7 @@ export default function PostForm({
             username: userRow.username,
             introduction: userRow.introduction,
           });
-
-          // 🔧 正しい投稿制限ロジック
-          if (userRow.has_posted === false) {
-            // 初回投稿者は投稿可能
-            setCanPost(true);
-            setPostError("");
-          } else {
-            // 2回目以降：24時間以内に投稿していない場合はBAN
-            const { data: lastPost, error: lastPostError } = await supabase
-              .from("todos")
-              .select("created_at")
-              .eq("user_id", uid)
-              .order("created_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            
-            if (lastPostError) {
-              console.error('PostForm: 最終投稿取得エラー:', lastPostError);
-              return;
-            }
-
-            if (!lastPost) {
-              // 投稿履歴がない場合は投稿可能
-              setCanPost(true);
-              setPostError("");
-              return;
-            }
-            
-            const last = new Date(lastPost.created_at);
-            const now = new Date();
-            const diffH = (now.getTime() - last.getTime()) / (1000 * 60 * 60);
-            
-            // 🚀 正しいロジック：24時間以内なら投稿可能、24時間経過したらBAN
-            if (diffH <= 24) {
-              console.log(`✅ 投稿可能: 前回から${diffH.toFixed(1)}時間経過`);
-              setCanPost(true);
-              setPostError("");
-            } else {
-              console.log(`🚨 BAN状態: 前回から${diffH.toFixed(1)}時間経過 (24時間超過)`);
-              // 🚨 24時間経過したらBAN
-              setCanPost(false);
-              setPostError(
-                "前回投稿から24時間以上経過したため、アカウントが制限されました。"
-              );
-              
-              // 🔧 BANの詳細情報
-              const banStartTime = new Date(last.getTime() + 24 * 60 * 60 * 1000);
-              const banDuration = now.getTime() - banStartTime.getTime();
-              const banHours = Math.floor(banDuration / (1000 * 60 * 60));
-              const banDays = Math.floor(banHours / 24);
-              
-              if (banDays > 0) {
-                setRemainingTime(`${banDays}日${banHours % 24}時間前からBAN中`);
-              } else {
-                setRemainingTime(`${banHours}時間前からBAN中`);
-              }
-            }
-          }
         } else {
-          // 新規ユーザーは投稿可能
-          setCanPost(true);
-          setPostError("");
           setUserProfile({
             icon_url: undefined,
             username: user?.user_metadata?.username || user?.email?.split('@')[0],
@@ -159,44 +93,6 @@ export default function PostForm({
     fetchUserProfile();
   }, [user]);
 
-  // 残り時間のカウントダウン
-  useEffect(() => {
-    if (!canPost && remainingTime) {
-      const timer = setInterval(() => {
-        supabase.auth.getUser().then(async ({ data }) => {
-          const uid = data?.user?.id ?? null;
-          if (!uid) return;
-          
-          const { data: lastPost } = await supabase
-            .from("todos")
-            .select("created_at")
-            .eq("user_id", uid)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          
-          if (lastPost) {
-            const last = new Date(lastPost.created_at);
-            const now = new Date();
-            const timeUntilNext = (last.getTime() + 24 * 60 * 60 * 1000) - now.getTime();
-            
-            if (timeUntilNext <= 0) {
-              setCanPost(true);
-              setPostError("");
-              setRemainingTime("");
-              setShowBanModal(false);
-            } else {
-              const hours = Math.floor(timeUntilNext / (1000 * 60 * 60));
-              const minutes = Math.floor((timeUntilNext % (1000 * 60 * 60)) / (1000 * 60));
-              setRemainingTime(`${hours}時間${minutes}分`);
-            }
-          }
-        });
-      }, 60000); // 1分ごとに更新
-
-      return () => clearInterval(timer);
-    }
-  }, [canPost, remainingTime]);
 
   const handleImageUpload = async (file: File): Promise<string | null> => {
     const uniqueFileName = `${Date.now()}_${Math.random()
@@ -240,72 +136,15 @@ export default function PostForm({
     
     if (isSubmitting) return; // 🔧 重複送信防止
     
-    // 🚀 投稿前に再度BAN状態をチェック（既存のロジック）
-    if (!userId) {
-      setPostError("ユーザー情報が取得できません");
-      return;
-    }
+    if (!userId) return;
 
     // 🚀 一時的IDを事前に生成（スコープを広げる）
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     try {
-      setIsSubmitting(true); // 🚀 送信開始
+      setIsSubmitting(true);
 
-      // 最新の投稿状態を再確認
-      const { data: userRow, error: userError } = await supabase
-        .from("usels")
-        .select("has_posted")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (userError) {
-        console.error('投稿前ユーザーチェックエラー:', userError);
-        setPostError("ユーザー情報の確認に失敗しました");
-        return;
-      }
-
-      // 2回目以降の投稿の場合、24時間ルールを厳格にチェック
-      if (userRow?.has_posted) {
-        const { data: lastPost, error: lastPostError } = await supabase
-          .from("todos")
-          .select("created_at")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (lastPostError) {
-          console.error('最終投稿チェックエラー:', lastPostError);
-          setPostError("投稿履歴の確認に失敗しました");
-          return;
-        }
-
-        if (lastPost) {
-          const last = new Date(lastPost.created_at);
-          const now = new Date();
-          const diffH = (now.getTime() - last.getTime()) / (1000 * 60 * 60);
-          
-          // 🚨 24時間経過している場合は投稿を拒否
-          if (diffH > 24) {
-            setCanPost(false);
-            setPostError("前回投稿から24時間以上経過したため、アカウントが制限されました。");
-            setShowBanModal(true);
-            return; // 🔥 ここで処理を完全に停止
-          }
-        }
-      }
-
-      // BAN状態の場合は投稿を拒否
-      if (!canPost) {
-        setShowBanModal(true);
-        return; // 🔥 ここで処理を完全に停止
-      }
-      
-      if (!text.trim()) {
-        setPostError("投稿内容を入力してください");
-        return;
-      }
+      if (!text.trim()) return;
 
       // 🚀 現在の値を保存（フォームリセット前に）
       const currentText = text;
@@ -343,7 +182,6 @@ export default function PostForm({
       setText("");
       setTags([]);
       setImageFile(null);
-      setPostError("");
 
       // 🔧 バックグラウンドで実際の投稿処理（ローディングなし）
       let imageUrl = null;
@@ -379,7 +217,6 @@ export default function PostForm({
         if (onOptimisticUpdate) {
           onOptimisticUpdate(tempId, null); // null = 削除
         }
-        setPostError("投稿に失敗しました: " + error.message);
         return;
       }
 
@@ -396,17 +233,8 @@ export default function PostForm({
 
       // 🚀 全体再取得は行わない！
 
-      // 初回投稿の場合、has_postedをtrueに設定
-      if (!userProfile?.username) {
-        await supabase
-          .from("usels")
-          .update({ has_posted: true })
-          .eq("user_id", userId);
-      }
-
     } catch (error) {
       console.error("投稿処理で予期しないエラー:", error);
-      setPostError("投稿処理中にエラーが発生しました");
       // �� エラー時は楽観的更新を削除（tempIdがスコープ内で利用可能）
       if (onOptimisticUpdate) {
         onOptimisticUpdate(tempId, null);
@@ -464,87 +292,9 @@ export default function PostForm({
     );
   };
 
-  // BANモーダルコンポーネント
-  const BanModal = () => {
-    if (!showBanModal) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
-        <div className="bg-gradient-to-br from-gray-900 via-black to-red-900/20 backdrop-blur-xl rounded-3xl p-8 border border-red-500/30 shadow-2xl shadow-red-500/20 max-w-md w-full relative">
-          {/* 閉じるボタン */}
-          <button
-            onClick={() => setShowBanModal(false)}
-            className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-          >
-            <X size={24} />
-          </button>
-
-          {/* アイコン */}
-          <div className="flex justify-center mb-6">
-            <div className="p-4 bg-gradient-to-r from-red-500/20 to-red-600/20 rounded-full border border-red-500/30">
-              <span className="text-red-400 text-3xl font-bold">🚫</span>
-            </div>
-          </div>
-
-          {/* タイトル */}
-          <h3 className="text-2xl font-bold text-white text-center mb-4">
-            アカウント制限中
-          </h3>
-
-          {/* メッセージ */}
-          <div className="text-center mb-8">
-            <p className="text-gray-300 text-lg mb-4">
-              24時間以上投稿していないため、<br />
-              アカウントが制限されました。
-            </p>
-            
-            {remainingTime && (
-              <div className="bg-red-900/30 border border-red-500/30 rounded-xl p-4 mb-4">
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <Clock size={20} className="text-red-400" />
-                  <span className="text-red-400 font-semibold">BAN開始</span>
-                </div>
-                <div className="text-xl font-bold text-red-300">
-                  {remainingTime}
-                </div>
-              </div>
-            )}
-
-            <p className="text-gray-400 text-sm">
-              24時間以内に投稿しなかった場合、<br />
-              アカウントが制限されます。
-            </p>
-          </div>
-
-          {/* ボタン */}
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setShowBanModal(false)}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg flex items-center justify-center space-x-2"
-            >
-              <span className="font-semibold">閉じる</span>
-            </button>
-            <button
-              onClick={() => {
-                setShowBanModal(false);
-                // ここでヘルプページやサポートに誘導することも可能
-              }}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-blue-500/30 flex items-center justify-center space-x-2"
-            >
-              <span className="font-semibold">ヘルプ</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <>
       <div className="border-b border-gray-800 p-4">
-        {!canPost && postError && (
-          <div className="text-red-400 mb-2 text-sm">{postError}</div>
-        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex space-x-3">
             {/* ユーザーアイコン */}
@@ -664,8 +414,6 @@ export default function PostForm({
         </form>
       </div>
 
-      {/* BANモーダル */}
-      <BanModal />
     </>
   );
 }
