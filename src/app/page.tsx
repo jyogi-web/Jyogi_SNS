@@ -14,6 +14,12 @@ import { useAuth } from "@/contexts/AuthContext";
 // 🔧 共通型定義をインポート
 import { PostType, ReplyType, StanpType } from "@/types/post";
 import TutorialModal from "@/components/TutorialModal";
+import {
+  getHomeFeedCache,
+  setHomeFeedCache,
+  HOME_FEED_CACHE_TTL_MS,
+  HomeFeedUserMapType,
+} from "@/lib/homeFeedCache";
 
 // 砂時計アイコン（Lucide ReactのSVGをインラインで利用）
 
@@ -26,41 +32,22 @@ import TutorialModal from "@/components/TutorialModal";
 // R2のパブリック開発URL
 const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
 
-type UserMapType = Record<
-  string,
-  {
-    iconUrl?: string;
-    displayName?: string;
-    setID?: string;
-    username?: string;
-  }
->;
-
-type HomeFeedCache = {
-  userId: string | null;
-  posts: PostType[];
-  stampList: string[];
-  userMap: UserMapType;
-  fetchedAt: number;
-};
+type UserMapType = HomeFeedUserMapType;
 
 type FetchTodosOptions = {
   silent?: boolean;
 };
 
-const HOME_FEED_CACHE_TTL_MS = 2 * 60 * 1000;
-let homeFeedCache: HomeFeedCache | null = null;
-
 export default function Home() {
   // state定義
   const { user, loading: authLoading } = useAuth();
-  const [posts, setPosts] = useState<PostType[]>(() => homeFeedCache?.posts ?? []);
-  const [loading, setLoading] = useState(() => !homeFeedCache);
+  const [posts, setPosts] = useState<PostType[]>(() => getHomeFeedCache()?.posts ?? []);
+  const [loading, setLoading] = useState(() => !getHomeFeedCache());
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [stampList, setStampList] = useState<string[]>(() => homeFeedCache?.stampList ?? []);
-  const [userMap, setUserMap] = useState<UserMapType>(() => homeFeedCache?.userMap ?? {});
+  const [stampList, setStampList] = useState<string[]>(() => getHomeFeedCache()?.stampList ?? []);
+  const [userMap, setUserMap] = useState<UserMapType>(() => getHomeFeedCache()?.userMap ?? {});
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 楽観的更新用のstate
@@ -175,13 +162,13 @@ export default function Home() {
         setPosts([]);
         setUserMap({});
         setStampList([]);
-        homeFeedCache = {
+        setHomeFeedCache({
           userId,
           posts: [],
           stampList: [],
           userMap: {},
           fetchedAt: Date.now(),
-        };
+        });
         return;
       }
 
@@ -350,13 +337,13 @@ export default function Home() {
       });
 
       setPosts(todosWithStatus);
-      homeFeedCache = {
+      setHomeFeedCache({
         userId,
         posts: todosWithStatus,
         stampList: stampListLocal,
         userMap: userMapLocal,
         fetchedAt: Date.now(),
-      };
+      });
     } catch (error) {
       console.error("fetchTodos: Unexpected error:", error);
       if (!silent) {
@@ -387,7 +374,7 @@ export default function Home() {
     }
 
     const currentUserId = user?.id ?? null;
-    const cached = homeFeedCache;
+    const cached = getHomeFeedCache();
     const isCacheForCurrentUser = !!cached && cached.userId === currentUserId;
     const isCacheFresh =
       isCacheForCurrentUser &&
