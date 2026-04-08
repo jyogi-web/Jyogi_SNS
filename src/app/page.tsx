@@ -638,14 +638,14 @@ export default function Home() {
       <PWAInstaller />
       <TutorialModal featureId="timeline" />
       <div className="min-h-screen bg-black text-white">
-        <div className="max-w-7xl mx-auto flex h-screen">
+        <div className="max-w-7xl mx-auto flex lg:h-screen">
           {/* デスクトップ: 左サイドバー */}
           <div className="hidden lg:block w-64 flex-shrink-0">
             {isClient && <Sidebar />}
           </div>
           
           {/* メインコンテンツ */}
-          <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 overflow-y-auto pb-20 lg:pb-0">
+          <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 pb-20 lg:pb-0 lg:overflow-y-auto">
             {/* ヘッダー */}
             <div className="sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 p-4 z-40">
               {/* モバイル: タイトルと認証ボタン */}
