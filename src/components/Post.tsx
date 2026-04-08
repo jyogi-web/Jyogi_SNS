@@ -4,8 +4,6 @@ import {
   Bookmark,
   Heart,
   MessageCircle,
-  Share,
-  MoreHorizontal,
   Smile,
 } from "lucide-react";
 // 🔧 共通型定義をインポート
@@ -400,9 +398,6 @@ export default function Post({
                 minute: "2-digit",
               })}
             </span>
-            <button className="ml-auto text-gray-500 hover:text-white transition-colors">
-              <MoreHorizontal size={18} />
-            </button>
           </div>
 
           {/* 投稿内容 */}
@@ -524,13 +519,6 @@ export default function Post({
                   size={20}
                   fill={bookmarked ? "currentColor" : "none"}
                 />
-              </div>
-            </button>
-
-            {/* その他ボタン */}
-            <button className="flex items-center space-x-2 text-gray-500 hover:text-gray-300 transition-colors group">
-              <div className="p-2 rounded-full group-hover:bg-gray-500/10 transition-colors">
-                <Share size={20} />
               </div>
             </button>
           </div>
