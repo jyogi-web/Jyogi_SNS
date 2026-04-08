@@ -537,7 +537,7 @@ export default function Post({
 
           {/* Discord風インラインリアクション */}
           {visibleReactions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className="flex flex-wrap gap-1 sm:gap-1.5 mt-2">
               {visibleReactions.map((url) => {
                 const count = stanpCountMap[url] || 0;
                 const isMine = !!currentUserId && localStanps.some(
@@ -548,14 +548,14 @@ export default function Post({
                     key={url}
                     onClick={() => handleAddStanp(url)}
                     disabled={loading}
-                    className={`flex items-center space-x-1 px-2 py-1 rounded-full border transition-all ${
+                    className={`flex items-center space-x-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-full border transition-all ${
                       isMine
                         ? "bg-blue-500/20 border-blue-400/50 text-blue-300"
                         : "bg-gray-800/60 border-gray-600/40 text-gray-300 hover:bg-gray-700/60 hover:border-gray-500/60"
                     } ${loading ? "opacity-50" : ""}`}
                   >
-                    <img src={getImageUrl(url)} alt="stamp" className="w-10 h-10 object-contain" />
-                    <span className="text-xs font-medium">{count}</span>
+                    <img src={getImageUrl(url)} alt="stamp" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" />
+                    <span className="text-[10px] sm:text-xs font-medium">{count}</span>
                   </button>
                 );
               })}
