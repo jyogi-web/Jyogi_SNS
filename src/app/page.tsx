@@ -26,27 +26,41 @@ import TutorialModal from "@/components/TutorialModal";
 // R2のパブリック開発URL
 const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
 
+type UserMapType = Record<
+  string,
+  {
+    iconUrl?: string;
+    displayName?: string;
+    setID?: string;
+    username?: string;
+  }
+>;
+
+type HomeFeedCache = {
+  userId: string | null;
+  posts: PostType[];
+  stampList: string[];
+  userMap: UserMapType;
+  fetchedAt: number;
+};
+
+type FetchTodosOptions = {
+  silent?: boolean;
+};
+
+const HOME_FEED_CACHE_TTL_MS = 2 * 60 * 1000;
+let homeFeedCache: HomeFeedCache | null = null;
+
 export default function Home() {
   // state定義
   const { user, loading: authLoading } = useAuth();
-  const [posts, setPosts] = useState<PostType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<PostType[]>(() => homeFeedCache?.posts ?? []);
+  const [loading, setLoading] = useState(() => !homeFeedCache);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [stampList, setStampList] = useState<string[]>([]);
-  const [userMap, setUserMap] = useState<
-    Record<
-      string,
-      {
-        iconUrl?: string;
-        displayName?: string;
-        setID?: string;
-        username?: string;
-
-      }
-    >
-  >({});
+  const [stampList, setStampList] = useState<string[]>(() => homeFeedCache?.stampList ?? []);
+  const [userMap, setUserMap] = useState<UserMapType>(() => homeFeedCache?.userMap ?? {});
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 楽観的更新用のstate
@@ -56,7 +70,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"newest" | "output_ch">("newest");
 
   // 🚀 fetchTodos関数への参照を保持
-  const fetchTodosRef = useRef<(() => Promise<void>) | null>(null);
+  const fetchTodosRef = useRef<((options?: FetchTodosOptions) => Promise<void>) | null>(null);
 
   // 楽観的更新ハンドラー
   const handleOptimisticPost = useCallback((newPost: PostType) => {
@@ -129,9 +143,13 @@ export default function Home() {
   }, []);
 
   // 🚀 統一された最適化済み投稿取得関数
-  const fetchTodos = useCallback(async () => {
+  const fetchTodos = useCallback(async (options: FetchTodosOptions = {}) => {
+    const { silent = false } = options;
+
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       
       // 1. 投稿データを取得
@@ -145,12 +163,25 @@ export default function Home() {
 
       if (todosError) {
         console.error("Error fetching todos:", todosError);
-        setError("投稿の読み込みに失敗しました");
+        if (!silent) {
+          setError("投稿の読み込みに失敗しました");
+        }
         return;
       }
 
+      let userId: string | null = null;
+
       if (!todosData || todosData.length === 0) {
         setPosts([]);
+        setUserMap({});
+        setStampList([]);
+        homeFeedCache = {
+          userId,
+          posts: [],
+          stampList: [],
+          userMap: {},
+          fetchedAt: Date.now(),
+        };
         return;
       }
 
@@ -169,7 +200,6 @@ export default function Home() {
       );
 
       // 3. 現在のユーザーIDを取得
-      let userId = null;
       try {
         const { data: userData } = await supabase.auth.getUser();
         userId = userData?.user?.id ?? null;
@@ -320,14 +350,25 @@ export default function Home() {
       });
 
       setPosts(todosWithStatus);
+      homeFeedCache = {
+        userId,
+        posts: todosWithStatus,
+        stampList: stampListLocal,
+        userMap: userMapLocal,
+        fetchedAt: Date.now(),
+      };
     } catch (error) {
       console.error("fetchTodos: Unexpected error:", error);
-      setError("データの読み込み中にエラーが発生しました");
-      setPosts([]);
+      if (!silent) {
+        setError("データの読み込み中にエラーが発生しました");
+        setPosts([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  }, [getPublicIconUrl, user]);
+  }, [getPublicIconUrl]);
 
   // 🔧 fetchTodos関数をrefに設定
   useEffect(() => {
@@ -341,10 +382,34 @@ export default function Home() {
 
   // 🔧 依存関係を修正した初期データ取得
   useEffect(() => {
-    if (isClient && !authLoading) {
-      fetchTodos();
+    if (!isClient || authLoading) {
+      return;
     }
-  }, [isClient, authLoading]); // fetchTodosを削除
+
+    const currentUserId = user?.id ?? null;
+    const cached = homeFeedCache;
+    const isCacheForCurrentUser = !!cached && cached.userId === currentUserId;
+    const isCacheFresh =
+      isCacheForCurrentUser &&
+      Date.now() - cached.fetchedAt < HOME_FEED_CACHE_TTL_MS;
+
+    if (cached && isCacheForCurrentUser) {
+      setPosts(cached.posts);
+      setUserMap(cached.userMap);
+      setStampList(cached.stampList);
+      setLoading(false);
+
+      if (!isCacheFresh) {
+        fetchTodos({ silent: true });
+      }
+      return;
+    }
+
+    setPosts([]);
+    setUserMap({});
+    setStampList([]);
+    fetchTodos();
+  }, [isClient, authLoading, user?.id, fetchTodos]);
 
   // リアルタイム購読
   useEffect(() => {
@@ -357,7 +422,7 @@ export default function Home() {
         { event: "INSERT", schema: "public", table: "todos" },
         (payload) => {
           console.log("New post added:", payload);
-          fetchTodos();
+          fetchTodosRef.current?.({ silent: true });
         }
       )
       .subscribe();
@@ -604,7 +669,7 @@ export default function Home() {
   };
 
   // ローディング表示
-  if (loading) {
+  if (loading && posts.length === 0) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
