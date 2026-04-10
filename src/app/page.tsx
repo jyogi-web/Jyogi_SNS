@@ -14,6 +14,12 @@ import { useAuth } from "@/contexts/AuthContext";
 // 🔧 共通型定義をインポート
 import { PostType, ReplyType, StanpType } from "@/types/post";
 import TutorialModal from "@/components/TutorialModal";
+import {
+  getHomeFeedCache,
+  setHomeFeedCache,
+  HOME_FEED_CACHE_TTL_MS,
+  HomeFeedUserMapType,
+} from "@/lib/homeFeedCache";
 
 // 砂時計アイコン（Lucide ReactのSVGをインラインで利用）
 
@@ -26,27 +32,22 @@ import TutorialModal from "@/components/TutorialModal";
 // R2のパブリック開発URL
 const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
 
+type UserMapType = HomeFeedUserMapType;
+
+type FetchTodosOptions = {
+  silent?: boolean;
+};
+
 export default function Home() {
   // state定義
   const { user, loading: authLoading } = useAuth();
-  const [posts, setPosts] = useState<PostType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<PostType[]>(() => getHomeFeedCache()?.posts ?? []);
+  const [loading, setLoading] = useState(() => !getHomeFeedCache());
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const [stampList, setStampList] = useState<string[]>([]);
-  const [userMap, setUserMap] = useState<
-    Record<
-      string,
-      {
-        iconUrl?: string;
-        displayName?: string;
-        setID?: string;
-        username?: string;
-
-      }
-    >
-  >({});
+  const [stampList, setStampList] = useState<string[]>(() => getHomeFeedCache()?.stampList ?? []);
+  const [userMap, setUserMap] = useState<UserMapType>(() => getHomeFeedCache()?.userMap ?? {});
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 楽観的更新用のstate
@@ -56,7 +57,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"newest" | "output_ch">("newest");
 
   // 🚀 fetchTodos関数への参照を保持
-  const fetchTodosRef = useRef<(() => Promise<void>) | null>(null);
+  const fetchTodosRef = useRef<((options?: FetchTodosOptions) => Promise<void>) | null>(null);
 
   // 楽観的更新ハンドラー
   const handleOptimisticPost = useCallback((newPost: PostType) => {
@@ -129,9 +130,13 @@ export default function Home() {
   }, []);
 
   // 🚀 統一された最適化済み投稿取得関数
-  const fetchTodos = useCallback(async () => {
+  const fetchTodos = useCallback(async (options: FetchTodosOptions = {}) => {
+    const { silent = false } = options;
+
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       
       // 1. 投稿データを取得
@@ -141,30 +146,27 @@ export default function Home() {
         .order("created_at", { ascending: false })
         .limit(50);
 
-      console.log("🔍 Supabaseから取得した投稿数:", todosData?.length || 0);
-      
-      if (todosData) {
-        // 期限切れ投稿の確認
-        const now = Date.now();
-        todosData.forEach((todo: any) => {
-          const created = new Date(todo.created_at).getTime();
-          const expires = created + 24 * 60 * 60 * 1000;
-          const hoursRemaining = (expires - now) / (1000 * 60 * 60);
-          
-          if (hoursRemaining <= 0) {
-            console.log(`⚠️ 期限切れ投稿が表示されています: ${todo.id} (${Math.abs(hoursRemaining).toFixed(1)}時間超過)`);
-          }
-        });
-      }
-
       if (todosError) {
         console.error("Error fetching todos:", todosError);
-        setError("投稿の読み込みに失敗しました");
+        if (!silent) {
+          setError("投稿の読み込みに失敗しました");
+        }
         return;
       }
 
+      let userId: string | null = null;
+
       if (!todosData || todosData.length === 0) {
         setPosts([]);
+        setUserMap({});
+        setStampList([]);
+        setHomeFeedCache({
+          userId,
+          posts: [],
+          stampList: [],
+          userMap: {},
+          fetchedAt: Date.now(),
+        });
         return;
       }
 
@@ -183,7 +185,6 @@ export default function Home() {
       );
 
       // 3. 現在のユーザーIDを取得
-      let userId = null;
       try {
         const { data: userData } = await supabase.auth.getUser();
         userId = userData?.user?.id ?? null;
@@ -334,14 +335,25 @@ export default function Home() {
       });
 
       setPosts(todosWithStatus);
+      setHomeFeedCache({
+        userId,
+        posts: todosWithStatus,
+        stampList: stampListLocal,
+        userMap: userMapLocal,
+        fetchedAt: Date.now(),
+      });
     } catch (error) {
       console.error("fetchTodos: Unexpected error:", error);
-      setError("データの読み込み中にエラーが発生しました");
-      setPosts([]);
+      if (!silent) {
+        setError("データの読み込み中にエラーが発生しました");
+        setPosts([]);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  }, [getPublicIconUrl, user]);
+  }, [getPublicIconUrl]);
 
   // 🔧 fetchTodos関数をrefに設定
   useEffect(() => {
@@ -355,10 +367,34 @@ export default function Home() {
 
   // 🔧 依存関係を修正した初期データ取得
   useEffect(() => {
-    if (isClient && !authLoading) {
-      fetchTodos();
+    if (!isClient || authLoading) {
+      return;
     }
-  }, [isClient, authLoading]); // fetchTodosを削除
+
+    const currentUserId = user?.id ?? null;
+    const cached = getHomeFeedCache();
+    const isCacheForCurrentUser = !!cached && cached.userId === currentUserId;
+    const isCacheFresh =
+      isCacheForCurrentUser &&
+      Date.now() - cached.fetchedAt < HOME_FEED_CACHE_TTL_MS;
+
+    if (cached && isCacheForCurrentUser) {
+      setPosts(cached.posts);
+      setUserMap(cached.userMap);
+      setStampList(cached.stampList);
+      setLoading(false);
+
+      if (!isCacheFresh) {
+        fetchTodos({ silent: true });
+      }
+      return;
+    }
+
+    setPosts([]);
+    setUserMap({});
+    setStampList([]);
+    fetchTodos();
+  }, [isClient, authLoading, user?.id, fetchTodos]);
 
   // リアルタイム購読
   useEffect(() => {
@@ -369,9 +405,8 @@ export default function Home() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "todos" },
-        (payload) => {
-          console.log("New post added:", payload);
-          fetchTodos();
+        () => {
+          fetchTodosRef.current?.({ silent: true });
         }
       )
       .subscribe();
@@ -618,7 +653,7 @@ export default function Home() {
   };
 
   // ローディング表示
-  if (loading) {
+  if (loading && posts.length === 0) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
@@ -652,14 +687,14 @@ export default function Home() {
       <PWAInstaller />
       <TutorialModal featureId="timeline" />
       <div className="min-h-screen bg-black text-white">
-        <div className="max-w-7xl mx-auto flex h-screen">
+        <div className="max-w-7xl mx-auto flex lg:h-screen">
           {/* デスクトップ: 左サイドバー */}
           <div className="hidden lg:block w-64 flex-shrink-0">
             {isClient && <Sidebar />}
           </div>
           
           {/* メインコンテンツ */}
-          <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 overflow-y-auto pb-20 lg:pb-0">
+          <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 pb-20 lg:pb-0 lg:overflow-y-auto">
             {/* ヘッダー */}
             <div className="sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 p-4 z-40">
               {/* モバイル: タイトルと認証ボタン */}

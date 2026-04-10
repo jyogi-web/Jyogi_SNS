@@ -12,6 +12,8 @@ import {
   X,
   CheckCircle,
   AlertCircle,
+  MessageCircle,
+  Heart,
 } from "lucide-react";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
@@ -20,6 +22,9 @@ import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { supabase } from "@/utils/supabase/client";
 import Image from "next/image";
+import { useAuth } from "@/contexts/AuthContext";
+import { getHomeFeedCache } from "@/lib/homeFeedCache";
+import { PostType } from "@/types/post";
 
 // 型定義
 interface FormData {
@@ -130,7 +135,39 @@ const Modal = ({ isOpen, onClose, title, message, type }: ModalProps) => {
   );
 };
 
+type ProfileTab = "posts" | "replies" | "media" | "likes";
+
+type TimelineReply = {
+  id: number | string;
+  post_id: number | string;
+  user_id?: string;
+  text?: string;
+  created_at?: string;
+  username?: string;
+  user_icon_url?: string;
+};
+
+type TimelinePost = {
+  id: number | string;
+  user_id?: string;
+  title?: string;
+  created_at?: string;
+  tags?: unknown;
+  replies?: unknown;
+  likes?: number;
+  image_url?: string;
+  authorName?: string;
+  authorSetID?: string;
+  authorIconUrl?: string;
+  likedByCurrentUser?: boolean;
+  repliesData?: TimelineReply[];
+  [key: string]: unknown;
+};
+
+const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
+
 function ProfilePageContent() {
+  const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     setID: "",
@@ -149,7 +186,12 @@ function ProfilePageContent() {
   });
   const [uploading, setUploading] = useState(false);
   const [bannerUploading, setBannerUploading] = useState(false);
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<TimelinePost[]>([]);
+  const [likedPosts, setLikedPosts] = useState<TimelinePost[]>([]);
+  const [likesTabLoading, setLikesTabLoading] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [expandedRepliesByPostId, setExpandedRepliesByPostId] = useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = useState<ProfileTab>("posts");
   const [followingCount, setFollowingCount] = useState<number>(0);
   const [followerCount, setFollowerCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -182,7 +224,7 @@ function ProfilePageContent() {
     if (iconUrl.includes("cloudflarestorage.com")) {
       const filename = iconUrl.split("/").pop();
       if (!filename) return "";
-      return `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${filename}`;
+      return `${R2_PUBLIC_URL}${filename}`;
     }
     return iconUrl;
   }, []);
@@ -192,9 +234,27 @@ function ProfilePageContent() {
     if (bannerUrl.includes("cloudflarestorage.com")) {
       const filename = bannerUrl.split("/").pop();
       if (!filename) return "";
-      return `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${filename}`;
+      return `${R2_PUBLIC_URL}${filename}`;
     }
     return bannerUrl;
+  }, []);
+
+  const getImageUrl = useCallback((imageUrl?: string) => {
+    if (!imageUrl) return "";
+
+    const trimmed = imageUrl.trim();
+    if (!trimmed) return "";
+
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+
+    if (trimmed.includes("cloudflarestorage.com")) {
+      const filename = trimmed.split("/").pop();
+      return filename ? `${R2_PUBLIC_URL}${filename}` : "";
+    }
+
+    return `${R2_PUBLIC_URL}${trimmed}`;
   }, []);
 
   // メモ化されたアイコンURL
@@ -208,17 +268,350 @@ function ProfilePageContent() {
     [formData.bannerUrl, getPublicBannerUrl]
   );
 
+  const mapHomeCachedPostToTimeline = useCallback((post: PostType): TimelinePost => {
+    const repliesData = Array.isArray(post.replies_data)
+      ? post.replies_data.map((reply) => ({
+          id: reply.id,
+          post_id: reply.post_id,
+          user_id: reply.user_id,
+          text: reply.text,
+          created_at: reply.created_at,
+          username: reply.username || "User",
+          user_icon_url: getPublicIconUrl(reply.user_icon_url),
+        }))
+      : [];
+
+    const fallbackRepliesCount = Number(post.replies ?? 0);
+    const repliesCount =
+      repliesData.length > 0
+        ? repliesData.length
+        : Number.isFinite(fallbackRepliesCount)
+          ? fallbackRepliesCount
+          : 0;
+
+    return {
+      ...post,
+      replies: repliesCount,
+      repliesData,
+      likedByCurrentUser: post.liked === true,
+      authorName: post.username || "User",
+      authorSetID: post.setID || "",
+      authorIconUrl: getPublicIconUrl(post.user_icon_url),
+    };
+  }, [getPublicIconUrl]);
+
+  const hydrateFromHomeCache = useCallback((userId: string): boolean => {
+    const cached = getHomeFeedCache();
+    if (!cached || cached.userId !== userId) {
+      return false;
+    }
+
+    const timelinePosts = cached.posts.map(mapHomeCachedPostToTimeline);
+    const ownPosts = timelinePosts.filter((post) => post.user_id === userId);
+    const likedTimelinePosts = timelinePosts.filter((post) => post.likedByCurrentUser === true);
+
+    setPosts(ownPosts);
+    setLikedPosts(likedTimelinePosts);
+    return true;
+  }, [mapHomeCachedPostToTimeline]);
+
+  const enrichPostsWithReplyCounts = useCallback(async (sourcePosts: TimelinePost[]) => {
+    if (sourcePosts.length === 0) {
+      return sourcePosts;
+    }
+
+    const postIds = sourcePosts
+      .map((post) => Number(post.id))
+      .filter((id) => Number.isFinite(id));
+
+    if (postIds.length === 0) {
+      return sourcePosts;
+    }
+
+    const { data: repliesData, error: repliesError } = await supabase
+      .from("replies")
+      .select("id, post_id, user_id, text, created_at")
+      .in("post_id", postIds);
+
+    if (repliesError) {
+      console.error("返信数取得エラー:", repliesError);
+      return sourcePosts;
+    }
+
+    const replyUserIds = Array.from(
+      new Set(
+        (repliesData ?? [])
+          .map((reply) => reply.user_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      )
+    );
+
+    type ReplyUser = {
+      username?: string;
+      icon_url?: string;
+    };
+
+    let replyUserMap: Record<string, ReplyUser> = {};
+
+    if (replyUserIds.length > 0) {
+      const { data: replyUsersData, error: replyUsersError } = await supabase
+        .from("usels")
+        .select("user_id, username, icon_url")
+        .in("user_id", replyUserIds);
+
+      if (replyUsersError) {
+        console.error("返信ユーザー取得エラー:", replyUsersError);
+      } else {
+        replyUserMap = (replyUsersData ?? []).reduce<Record<string, ReplyUser>>((acc, replyUser) => {
+          acc[replyUser.user_id] = {
+            username: replyUser.username,
+            icon_url: replyUser.icon_url,
+          };
+          return acc;
+        }, {});
+      }
+    }
+
+    const replyCountMap = new Map<number, number>();
+    const repliesByPostMap = new Map<number, TimelineReply[]>();
+
+    (repliesData ?? []).forEach((reply) => {
+      const postId = Number(reply.post_id);
+      if (!Number.isFinite(postId)) {
+        return;
+      }
+
+      const replyUser = replyUserMap[reply.user_id] || {};
+      const timelineReply: TimelineReply = {
+        id: reply.id,
+        post_id: reply.post_id,
+        user_id: reply.user_id,
+        text: reply.text,
+        created_at: reply.created_at,
+        username: replyUser.username || "User",
+        user_icon_url: getPublicIconUrl(replyUser.icon_url),
+      };
+
+      if (!repliesByPostMap.has(postId)) {
+        repliesByPostMap.set(postId, []);
+      }
+
+      repliesByPostMap.get(postId)!.push(timelineReply);
+      replyCountMap.set(postId, (replyCountMap.get(postId) ?? 0) + 1);
+    });
+
+    return sourcePosts.map((post) => {
+      const postId = Number(post.id);
+      const fallbackCount = Number(post.replies ?? 0);
+      const repliesDataForPost = repliesByPostMap.get(postId) ?? [];
+
+      return {
+        ...post,
+        repliesData: repliesDataForPost,
+        replies:
+          replyCountMap.get(postId) ??
+          (Number.isFinite(fallbackCount) ? fallbackCount : 0),
+      };
+    });
+  }, [getPublicIconUrl]);
+
+  const enrichPostsWithLikedState = useCallback(async (sourcePosts: TimelinePost[], userId: string) => {
+    if (sourcePosts.length === 0) {
+      return sourcePosts;
+    }
+
+    const postIds = sourcePosts
+      .map((post) => Number(post.id))
+      .filter((id) => Number.isFinite(id));
+
+    if (postIds.length === 0) {
+      return sourcePosts.map((post) => ({
+        ...post,
+        likedByCurrentUser: false,
+      }));
+    }
+
+    const { data: likesData, error: likesError } = await supabase
+      .from("likes")
+      .select("post_id")
+      .eq("user_id", userId)
+      .eq("on", true)
+      .in("post_id", postIds);
+
+    if (likesError) {
+      console.error("いいね状態取得エラー:", likesError);
+      return sourcePosts.map((post) => ({
+        ...post,
+        likedByCurrentUser: false,
+      }));
+    }
+
+    const likedPostIdSet = new Set(
+      (likesData ?? [])
+        .map((like) => Number(like.post_id))
+        .filter((id) => Number.isFinite(id))
+    );
+
+    return sourcePosts.map((post) => ({
+      ...post,
+      likedByCurrentUser: likedPostIdSet.has(Number(post.id)),
+    }));
+  }, []);
+
+  const fetchLikedPosts = useCallback(async (userId: string) => {
+    setLikesTabLoading(true);
+
+    try {
+      const { data: likesData, error: likesError } = await supabase
+        .from("likes")
+        .select("post_id")
+        .eq("user_id", userId)
+        .eq("on", true);
+
+      if (likesError) {
+        console.error("いいね投稿取得エラー(いいね一覧):", likesError);
+        setLikedPosts([]);
+        return;
+      }
+
+      const likedPostIds = Array.from(
+        new Set(
+          (likesData ?? [])
+            .map((like) => Number(like.post_id))
+            .filter((postId) => Number.isFinite(postId))
+        )
+      );
+
+      if (likedPostIds.length === 0) {
+        setLikedPosts([]);
+        return;
+      }
+
+      const { data: likedTodos, error: likedTodosError } = await supabase
+        .from("todos")
+        .select("*")
+        .in("id", likedPostIds)
+        .order("created_at", { ascending: false });
+
+      if (likedTodosError) {
+        console.error("いいね投稿取得エラー(投稿一覧):", likedTodosError);
+        setLikedPosts([]);
+        return;
+      }
+
+      const likedUserIds = Array.from(
+        new Set(
+          (likedTodos ?? [])
+            .map((todo) => todo.user_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        )
+      );
+
+      type LikedAuthor = {
+        username?: string;
+        setID?: string;
+        icon_url?: string;
+      };
+
+      let authorMap: Record<string, LikedAuthor> = {};
+
+      if (likedUserIds.length > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from("usels")
+          .select("user_id, username, setID, icon_url")
+          .in("user_id", likedUserIds);
+
+        if (usersError) {
+          console.error("いいね投稿取得エラー(ユーザー):", usersError);
+        } else {
+          authorMap = (usersData ?? []).reduce<Record<string, LikedAuthor>>((acc, author) => {
+            acc[author.user_id] = {
+              username: author.username,
+              setID: author.setID,
+              icon_url: author.icon_url,
+            };
+            return acc;
+          }, {});
+        }
+      }
+
+      const normalizedLikedPosts: TimelinePost[] = (likedTodos ?? []).map((todo) => {
+        const author = authorMap[todo.user_id] || {};
+        return {
+          ...todo,
+          authorName: author.username || "User",
+          authorSetID: author.setID || "",
+          authorIconUrl: getPublicIconUrl(author.icon_url),
+        };
+      });
+
+      const likedPostsWithReplyCounts = await enrichPostsWithReplyCounts(normalizedLikedPosts);
+      const likedPostsWithLikeState = await enrichPostsWithLikedState(
+        likedPostsWithReplyCounts,
+        userId
+      );
+      setLikedPosts(likedPostsWithLikeState);
+    } catch (error) {
+      console.error("いいね投稿取得中に予期せぬエラー:", error);
+      setLikedPosts([]);
+    } finally {
+      setLikesTabLoading(false);
+    }
+  }, [getPublicIconUrl, enrichPostsWithReplyCounts, enrichPostsWithLikedState]);
+
+  const filteredPosts = useMemo(() => {
+    const getReplyCount = (post: { replies?: unknown }) => {
+      if (Array.isArray(post.replies)) {
+        return post.replies.length;
+      }
+
+      const replyCount = Number(post.replies ?? 0);
+      return Number.isFinite(replyCount) ? replyCount : 0;
+    };
+
+    switch (activeTab) {
+      case "replies":
+        return posts.filter((post) => getReplyCount(post) > 0);
+      case "media":
+        return posts.filter((post) =>
+          typeof post.image_url === "string" ? getImageUrl(post.image_url) !== "" : false
+        );
+      case "likes":
+        return likedPosts;
+      default:
+        return posts;
+    }
+  }, [posts, likedPosts, activeTab, getImageUrl]);
+
+  const emptyStateMessage = useMemo(() => {
+    switch (activeTab) {
+      case "replies":
+        return "返信がある投稿はまだありません";
+      case "media":
+        return "メディア付き投稿はまだありません";
+      case "likes":
+        return "いいねした投稿はまだありません";
+      default:
+        return "まだ投稿がありません";
+    }
+  }, [activeTab]);
+
   // 初期データ取得を最適化
   useEffect(() => {
     const fetchUserData = async () => {
-      setLoading(true);
+      if (!user?.id) {
+        setPosts([]);
+        setLikedPosts([]);
+        setCurrentUserId(null);
+        setLoading(false);
+        return;
+      }
+
+      const hasHomeCache = hydrateFromHomeCache(user.id);
+      setLoading(!hasHomeCache);
+
       try {
-        const { data: authData } = await supabase.auth.getUser();
-        const user = authData?.user;
-        if (!user) {
-          setLoading(false);
-          return;
-        }
+        setCurrentUserId(user.id);
 
         // 並列でデータを取得
         const [userDataResult, postsResult, followingResult, followerResult] = await Promise.all([
@@ -250,7 +643,6 @@ function ProfilePageContent() {
         if (userError) {
           console.error("Error fetching user data:", userError);
         } else if (userData) {
-          console.log('🔍 userData.created_at:', userData.created_at); // デバッグログ
           setFormData({
             setID: userData.setID || userData.username || "user",
             displayName: userData.username || userData.display_name || "ユーザー",
@@ -271,7 +663,14 @@ function ProfilePageContent() {
         if (postsError) {
           console.error("投稿取得エラー:", postsError);
         } else {
-          setPosts(userPosts ?? []);
+          const postsWithReplyCounts = await enrichPostsWithReplyCounts(
+            (userPosts ?? []) as TimelinePost[]
+          );
+          const postsWithLikeState = await enrichPostsWithLikedState(
+            postsWithReplyCounts,
+            user.id
+          );
+          setPosts(postsWithLikeState);
         }
 
         setFollowingCount(followingCount ?? 0);
@@ -284,7 +683,15 @@ function ProfilePageContent() {
     };
 
     fetchUserData();
-  }, []);
+  }, [user?.id, enrichPostsWithReplyCounts, enrichPostsWithLikedState, hydrateFromHomeCache]);
+
+  useEffect(() => {
+    if (activeTab !== "likes" || !currentUserId) {
+      return;
+    }
+
+    fetchLikedPosts(currentUserId);
+  }, [activeTab, currentUserId, fetchLikedPosts]);
 
   const handleInputChange = (
     field: keyof FormData,
@@ -672,15 +1079,7 @@ function ProfilePageContent() {
               <div className="space-y-4">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-bold">
-                    {formData.username
-                      ? formData.username
-                      : (() => {
-                          console.log(
-                            "[プロフィール] usernameが空です",
-                            formData
-                          );
-                          return "";
-                        })()}
+                    {formData.username || ""}
                   </h2>
                   <p className="text-gray-400">@{formData.setID}</p>
                 </div>
@@ -765,100 +1164,256 @@ function ProfilePageContent() {
 
           {/* タブ */}
           <div className="flex border-b border-gray-800 overflow-x-auto">
-            <button className="px-4 sm:px-6 py-4 text-sm font-medium text-white border-b-2 border-blue-500 whitespace-nowrap">
-              投稿
-            </button>
-            <button className="px-4 sm:px-6 py-4 text-sm font-medium text-gray-500 hover:text-white whitespace-nowrap">
-              返信
-            </button>
-            <button className="px-4 sm:px-6 py-4 text-sm font-medium text-gray-500 hover:text-white whitespace-nowrap">
-              メディア
-            </button>
-            <button className="px-4 sm:px-6 py-4 text-sm font-medium text-gray-500 hover:text-white whitespace-nowrap">
-              いいね
-            </button>
+            {[
+              { id: "posts", label: "投稿" },
+              { id: "replies", label: "返信" },
+              { id: "media", label: "メディア" },
+              { id: "likes", label: "いいね" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as ProfileTab)}
+                className={`px-4 sm:px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? "text-white border-b-2 border-blue-500"
+                    : "text-gray-500 hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* 投稿一覧 */}
           <div className="divide-y divide-gray-800">
-            {posts.map((post) => {
-              // プロフィール情報からアイコンを取得
-              const publicIconUrl = getPublicIconUrl(formData.iconUrl);
-              
-              return (
-                <div
-                  key={post.id}
-                  className="p-4 hover:bg-gray-900/50 transition-colors"
-                  style={{ cursor: 'default' }} // クリック無効化
-                  onClick={(e) => e.preventDefault()} // クリックイベントを無効化
-                >
-                  <div className="flex space-x-3">
-                    {/* 投稿アイコン表示 */}
-                    {publicIconUrl ? (
-                      <div className="relative">
-                        <Image
-                          src={publicIconUrl}
-                          alt="icon"
-                          width={40}
-                          height={40}
-                          className="w-10 h-10 rounded-full object-cover"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            // 画像読み込みに失敗した場合はデフォルトアイコンを表示
-                            e.currentTarget.style.display = 'none';
-                            const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                            if (fallback) fallback.style.display = 'flex';
-                          }}
-                        />
-                        {/* フォールバックアイコン */}
-                        <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold absolute top-0 left-0" style={{ display: 'none' }}>
-                          {(formData.displayName || "U").charAt(0)}
+            {activeTab === "likes" && likesTabLoading && likedPosts.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">いいねした投稿を読み込み中...</div>
+            ) : filteredPosts.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">{emptyStateMessage}</div>
+            ) : (
+              filteredPosts.map((post) => {
+                const isLikesTab = activeTab === "likes";
+                const displayName = isLikesTab
+                  ? post.authorName || "User"
+                  : formData.username || formData.displayName;
+                const postIdKey = String(post.id);
+                const setId = isLikesTab ? post.authorSetID || "" : formData.setID;
+                const publicIconUrl = isLikesTab
+                  ? typeof post.authorIconUrl === "string"
+                    ? post.authorIconUrl
+                    : ""
+                  : getPublicIconUrl(formData.iconUrl);
+                const isRepliesExpanded = !!expandedRepliesByPostId[postIdKey];
+                const repliesCount = Array.isArray(post.replies)
+                  ? post.replies.length
+                  : Number.isFinite(Number(post.replies ?? 0))
+                    ? Number(post.replies ?? 0)
+                    : 0;
+                const likesCount = Number.isFinite(Number(post.likes ?? 0))
+                  ? Number(post.likes ?? 0)
+                  : 0;
+                const isLiked = post.likedByCurrentUser === true;
+                const postReplies = Array.isArray(post.repliesData)
+                  ? post.repliesData
+                  : [];
+                const imageUrl =
+                  typeof post.image_url === "string" ? getImageUrl(post.image_url) : "";
+                const tags = Array.isArray(post.tags)
+                  ? post.tags
+                  : typeof post.tags === "string"
+                    ? post.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+                    : [];
+
+                return (
+                  <div
+                    key={post.id}
+                    className="p-4 hover:bg-gray-900/50 transition-colors"
+                    style={{ cursor: 'default' }} // クリック無効化
+                    onClick={(e) => e.preventDefault()} // クリックイベントを無効化
+                  >
+                    <div className="flex space-x-3">
+                      {/* 投稿アイコン表示 */}
+                      {publicIconUrl ? (
+                        <div className="relative">
+                          <Image
+                            src={publicIconUrl}
+                            alt="icon"
+                            width={40}
+                            height={40}
+                            className="w-10 h-10 rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              // 画像読み込みに失敗した場合はデフォルトアイコンを表示
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          {/* フォールバックアイコン */}
+                          <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold absolute top-0 left-0" style={{ display: 'none' }}>
+                            {(displayName || "U").charAt(0)}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                        {(formData.displayName || "U").charAt(0)}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="font-semibold">
-                          {formData.username || formData.displayName}
-                        </span>
-                        <span className="text-gray-400 text-sm">
-                          @{formData.setID}
-                        </span>
-                        <span className="text-gray-400 text-sm">·</span>
-                        <span className="text-gray-400 text-sm">
-                          {post.created_at
-                            ? new Date(post.created_at).toLocaleString("ja-JP")
-                            : ""}
-                        </span>
-                      </div>
-                      <p className="text-white mb-2 break-words">
-                        {post.title}
-                      </p>
-                      {post.tags && post.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {post.tags.map((tag: string, index: number) => (
-                            <span
-                              key={index}
-                              className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
+                      ) : (
+                        <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                          {(displayName || "U").charAt(0)}
                         </div>
                       )}
-                      <div className="flex items-center space-x-6 text-sm text-gray-400">
-                        <span style={{ cursor: 'default' }}>返信 {post.replies ?? 0}</span>
-                        <span style={{ cursor: 'default' }}>いいね {post.likes ?? 0}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-semibold">
+                            {displayName}
+                          </span>
+                          <span className="text-gray-400 text-sm">
+                            @{setId}
+                          </span>
+                          <span className="text-gray-400 text-sm">·</span>
+                          <span className="text-gray-400 text-sm">
+                            {post.created_at
+                              ? new Date(post.created_at).toLocaleString("ja-JP")
+                              : ""}
+                          </span>
+                        </div>
+                        <p className="text-white mb-2 break-words">
+                          {post.title}
+                        </p>
+                        {imageUrl && (
+                          <div className="mb-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={imageUrl}
+                              alt="投稿画像"
+                              className="max-w-xs rounded-lg"
+                              style={{ maxHeight: 300 }}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          </div>
+                        )}
+                        {tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {tags.map((tag: string, index: number) => (
+                              <span
+                                key={index}
+                                className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded-full text-xs"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-start gap-6 max-w-md">
+                          <button
+                            type="button"
+                            className={`flex items-center space-x-2 transition-colors group ${
+                              isRepliesExpanded
+                                ? "text-blue-400"
+                                : "text-gray-500 hover:text-blue-400"
+                            }`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (repliesCount <= 0) {
+                                return;
+                              }
+                              setExpandedRepliesByPostId((prev) => ({
+                                ...prev,
+                                [postIdKey]: !prev[postIdKey],
+                              }));
+                            }}
+                          >
+                            <div
+                              className={`p-2 rounded-full transition-colors ${
+                                isRepliesExpanded
+                                  ? "bg-blue-500/10"
+                                  : "group-hover:bg-blue-500/10"
+                              }`}
+                            >
+                              <MessageCircle size={20} />
+                            </div>
+                            <span className="text-sm font-medium">
+                              {repliesCount > 0 ? repliesCount : ""}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            className={`flex items-center space-x-2 transition-colors group ${
+                              isLiked
+                                ? "text-red-400"
+                                : "text-gray-500 hover:text-red-400"
+                            }`}
+                          >
+                            <div
+                              className={`p-2 rounded-full transition-colors ${
+                                isLiked
+                                  ? "bg-red-500/10"
+                                  : "group-hover:bg-red-500/10"
+                              }`}
+                            >
+                              <Heart size={20} fill={isLiked ? "currentColor" : "none"} />
+                            </div>
+                            <span className="text-sm font-medium">
+                              {likesCount > 0 ? likesCount : ""}
+                            </span>
+                          </button>
+                        </div>
+
+                        {isRepliesExpanded && (
+                          <div className="mt-3 rounded-lg border border-gray-700/40 bg-gray-900/30 p-3 space-y-3">
+                            {postReplies.length === 0 ? (
+                              <p className="text-xs text-gray-400">返信はまだありません</p>
+                            ) : (
+                              postReplies.map((reply) => (
+                                <div key={`${postIdKey}-${reply.id}`} className="flex items-start gap-2">
+                                  {reply.user_icon_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={reply.user_icon_url}
+                                      alt="reply-user-icon"
+                                      className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <div className="w-7 h-7 rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0">
+                                      {(reply.username || "U").charAt(0)}
+                                    </div>
+                                  )}
+
+                                  <div className="flex-1 rounded-md bg-gray-800/60 px-3 py-2">
+                                    <div className="mb-1 flex items-center gap-2 text-xs">
+                                      <span className="font-semibold text-blue-300">{reply.username || "User"}</span>
+                                      <span className="text-gray-500">
+                                        {reply.created_at
+                                          ? new Date(reply.created_at).toLocaleString("ja-JP", {
+                                              month: "2-digit",
+                                              day: "2-digit",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })
+                                          : ""}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+                                      {reply.text || ""}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
