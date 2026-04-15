@@ -156,23 +156,33 @@ export default function Home() {
 
       let userId: string | null = null;
 
+      // 2. 現在のユーザーIDを取得
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        userId = userData?.user?.id ?? null;
+      } catch (error) {
+        console.warn("Error getting user session:", error);
+      }
+
       if (!todosData || todosData.length === 0) {
         setPosts([]);
         setUserMap({});
         setStampList([]);
-        setHomeFeedCache({
-          userId,
-          posts: [],
-          stampList: [],
-          userMap: {},
-          fetchedAt: Date.now(),
-        });
+        if (userId) {
+          setHomeFeedCache({
+            userId,
+            posts: [],
+            stampList: [],
+            userMap: {},
+            fetchedAt: Date.now(),
+          });
+        }
         return;
       }
 
       const validTodos = todosData;
 
-      // 2. ユーザーIDを抽出
+      // 3. ユーザーIDを抽出
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       const userIds = Array.from(
         new Set(
@@ -183,14 +193,6 @@ export default function Home() {
             )
         )
       );
-
-      // 3. 現在のユーザーIDを取得
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        userId = userData?.user?.id ?? null;
-      } catch (error) {
-        console.warn("Error getting user session:", error);
-      }
 
       // 4. 投稿IDを抽出
       const postIds = validTodos.map(todo => Number(todo.id)); // validTodosを使用
@@ -335,13 +337,15 @@ export default function Home() {
       });
 
       setPosts(todosWithStatus);
-      setHomeFeedCache({
-        userId,
-        posts: todosWithStatus,
-        stampList: stampListLocal,
-        userMap: userMapLocal,
-        fetchedAt: Date.now(),
-      });
+      if (userId) {
+        setHomeFeedCache({
+          userId,
+          posts: todosWithStatus,
+          stampList: stampListLocal,
+          userMap: userMapLocal,
+          fetchedAt: Date.now(),
+        });
+      }
     } catch (error) {
       console.error("fetchTodos: Unexpected error:", error);
       if (!silent) {
