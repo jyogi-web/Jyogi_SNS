@@ -6,6 +6,7 @@ import {
   MapPin,
   Wine,
   Camera,
+  Plus,
   MoreHorizontal,
   X,
   LogOut,
@@ -16,6 +17,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import PostForm from "@/components/PostForm";
 
 // 拡張メニューアイテムの型定義
 interface ExtendedMenuItem {
@@ -23,15 +25,19 @@ interface ExtendedMenuItem {
   label: string;
   href: string;
   color: string;
+  isPost?: boolean;
   isLogout?: boolean;
 }
 
 export default function MobileExtendedNavigation() {
+  const MENU_ANIMATION_MS = 350;
+
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showPostPopup, setShowPostPopup] = useState(false);
   const { user, signOut } = useAuth();
 
   // クライアントサイドでのみ実行されることを保証
@@ -45,6 +51,13 @@ export default function MobileExtendedNavigation() {
     { icon: Camera, label: "REALction", href: "/realction", color: "text-purple-400" },
     { icon: MapPin, label: "おすすめスポット", href: "/map", color: "text-green-400" },
     { icon: Wine, label: "TikuriBAR", href: "/tikuribar", color: "text-green-400" },
+    ...(user ? [{
+      icon: Plus,
+      label: "投稿",
+      href: "#",
+      color: "text-blue-400",
+      isPost: true
+    }] : []),
     { icon: Settings, label: "設定", href: "/settings", color: "text-gray-400" },
     ...(user ? [{ 
       icon: LogOut, 
@@ -61,9 +74,18 @@ export default function MobileExtendedNavigation() {
   };
 
   const handleItemClick = (item: ExtendedMenuItem) => {
+    if (item.isPost) {
+      handleClose();
+      setTimeout(() => {
+        setShowPostPopup(true);
+      }, MENU_ANIMATION_MS);
+      return;
+    }
+
     if (item.isLogout) {
       signOut();
     }
+
     // メニューを閉じる（アニメーション付き）
     handleClose();
   };
@@ -89,7 +111,7 @@ export default function MobileExtendedNavigation() {
       setIsExpanded(false);
       setIsAnimating(false);
       setShowMenu(false);
-    }, 350); // アニメーション時間と同期
+    }, MENU_ANIMATION_MS); // アニメーション時間と同期
   };
 
   // オーバーレイクリックでメニューを閉じる
@@ -144,10 +166,14 @@ export default function MobileExtendedNavigation() {
                   transitionDelay: isExpanded && !isAnimating ? `${100 + index * 50}ms` : '0ms'
                 }}
               >
-                {item.isLogout ? (
+                {item.isLogout || item.isPost ? (
                   <button
                     onClick={() => handleItemClick(item)}
-                    className="flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 text-gray-300 hover:bg-red-900/80 hover:text-red-300 hover:scale-105 w-full text-left"
+                    className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 w-full text-left ${
+                      item.isLogout
+                        ? "text-gray-300 hover:bg-red-900/80 hover:text-red-300 hover:scale-105"
+                        : "text-gray-300 hover:bg-gray-800/80 hover:text-white hover:scale-105"
+                    }`}
                   >
                     <item.icon size={18} className={item.color} />
                     <span className="font-medium text-sm">{item.label}</span>
@@ -168,6 +194,38 @@ export default function MobileExtendedNavigation() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* 投稿ポップアップ */}
+      {showPostPopup && isClient && (
+        <div
+          className="lg:hidden fixed inset-0 z-[70] bg-black/55 backdrop-blur-sm flex items-end sm:items-center justify-center p-3"
+          onClick={() => setShowPostPopup(false)}
+        >
+          <div
+            className="w-full max-w-2xl bg-gray-900/95 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-gray-900/95">
+              <h2 className="text-sm font-semibold text-gray-200">投稿を作成</h2>
+              <button
+                onClick={() => setShowPostPopup(false)}
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                aria-label="投稿ポップアップを閉じる"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <PostForm
+              onOptimisticUpdate={(_, realPost) => {
+                  if (!realPost || (realPost && !realPost.isOptimistic)) {
+                  setShowPostPopup(false);
+                }
+              }}
+            />
           </div>
         </div>
       )}
