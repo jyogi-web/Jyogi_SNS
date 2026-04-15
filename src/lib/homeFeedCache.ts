@@ -1,3 +1,4 @@
+"use client";
 import { PostType } from "@/types/post";
 
 export type HomeFeedUserMapType = Record<
