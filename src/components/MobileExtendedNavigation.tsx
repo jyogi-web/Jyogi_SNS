@@ -221,7 +221,7 @@ export default function MobileExtendedNavigation() {
 
             <PostForm
               onOptimisticUpdate={(_, realPost) => {
-                if (realPost && !realPost.isOptimistic) {
+                  if (!realPost || (realPost && !realPost.isOptimistic)) {
                   setShowPostPopup(false);
                 }
               }}
