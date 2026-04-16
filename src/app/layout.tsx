@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Jyogi_SNS",
-  description: "JyogiSNS - 瞬間で繋がるSNS",
+  description: "JyogiSNS - 脳内直結SNS",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -22,12 +22,12 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "JyogiSNS",
     title: "JyogiSNS",
-    description: "JyogiSNS - 瞬間で繋がるSNS",
+    description: "JyogiSNS - 脳内直結SNS",
   },
   twitter: {
     card: "summary",
     title: "JyogiSNS",
-    description: "JyogiSNS - 瞬間で繋がるSNS",
+    description: "JyogiSNS - 脳内直結SNS",
   },
   icons: {
     icon: "/favicon.ico",

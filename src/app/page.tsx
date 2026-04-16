@@ -656,18 +656,6 @@ export default function Home() {
     }
   };
 
-  // ローディング表示
-  if (loading && posts.length === 0) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>読み込み中...</p>
-        </div>
-      </div>
-    );
-  }
-
   // エラー表示
   if (error) {
     return (
@@ -790,7 +778,28 @@ export default function Home() {
             
             {/* 投稿一覧表示 */}
             <div className="relative z-10">
-              {filteredPosts.length === 0 ? (
+              {loading && filteredPosts.length === 0 ? (
+                <div className="px-4 py-6 space-y-4">
+                  {[1, 2, 3].map((item) => (
+                    <div
+                      key={item}
+                      className="animate-pulse rounded-2xl border border-gray-800 bg-gray-900/40 p-4"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-10 w-10 rounded-full bg-gray-800" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3 w-32 rounded bg-gray-800" />
+                          <div className="h-2 w-20 rounded bg-gray-800/80" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 w-full rounded bg-gray-800" />
+                        <div className="h-3 w-5/6 rounded bg-gray-800" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredPosts.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <p>まだ投稿がありません</p>
                 </div>
