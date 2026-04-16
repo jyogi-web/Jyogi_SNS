@@ -209,7 +209,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           {/* メインアイコン - ロゴ画像を使用 */}
           <div className={`relative w-28 h-28 bg-gradient-to-br ${selectedTheme.iconBg} rounded-full flex items-center justify-center shadow-2xl p-4`}>
             <Image
-              src="/Tikuru24logo.png"
+              src="/JyogiIcon.png"
               alt="JyogiSNS"
               width={80}
               height={80}

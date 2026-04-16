@@ -33,7 +33,11 @@ export default function SignUpPage() {
       if (error) {
         throw new Error(error.message)
       }
-      router.push('/auth/verify?source=signup')
+      const verifyParams = new URLSearchParams({
+        source: 'signup',
+        email: formData.email,
+      })
+      router.push(`/auth/verify?${verifyParams.toString()}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '新規登録に失敗しました')
     } finally {
@@ -86,7 +90,7 @@ export default function SignUpPage() {
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <Image
-              src="/Tikuru24logo.png"
+              src="/JyogiIcon.png"
               alt="JyogiSNS Logo"
               width={80}
               height={80}

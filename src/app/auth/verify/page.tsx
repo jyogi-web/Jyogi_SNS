@@ -18,17 +18,22 @@ function VerifyContent() {
       try {
         // URLパラメータから認証状態を確認
         const type = searchParams.get('type')
-        const token = searchParams.get('token')
+        const token = searchParams.get('token') || searchParams.get('token_hash')
         const source = searchParams.get('source')
+        const email = searchParams.get('email')
 
-        if (source === 'signup' && token) {
-          // サインアップ確認の場合
+        if (type === 'signup' && token) {
+          // Supabaseのメール認証リンクからの遷移
           setStatus('success')
           setMessage('メールアドレスの確認が完了しました！')
         } else if (source === 'signup') {
           // 登録直後：メール確認待ち状態
           setStatus('pending')
-          setMessage('確認メールを送信しました。受信ボックスを確認してリンクをクリックしてください。')
+          setMessage(
+            email
+              ? `Supabaseから確認メールを送信しました。${email} 宛てのメールに記載されたURLをクリックして認証を完了してください。`
+              : 'Supabaseから確認メールを送信しました。メールに記載されたURLをクリックして認証を完了してください。'
+          )
         } else if (type === 'recovery' && token) {
           // パスワードリセットの場合
           setStatus('success')
@@ -100,10 +105,13 @@ function VerifyContent() {
                 </div>
                 <div>
                   <h2 className="text-xl font-semibold mb-2 text-blue-400">
-                    ✉️ メールを送信しました
+                    ✉️ 認証メールを送信しました
                   </h2>
                   <p className="text-gray-300">{message}</p>
                 </div>
+                <p className="text-sm text-gray-500">
+                  メールが見つからない場合は、迷惑メールフォルダも確認してください。
+                </p>
               </div>
             )}
 

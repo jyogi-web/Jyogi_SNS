@@ -137,7 +137,7 @@ src/
 
 ```
 public/
-├── Tikuru24logo.png           # ロゴ
+├── JyogiIcon.png           # ロゴ
 ├── manifest.json              # PWAマニフェスト
 ├── sw.js                      # Service Worker
 ├── android-launchericon-*.png # PWAアイコン各サイズ

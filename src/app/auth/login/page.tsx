@@ -81,7 +81,7 @@ export default function LoginPage() {
         <div className="text-center space-y-6">
           <div className="flex justify-center">
             <Image
-              src="/Tikuru24logo.png"
+              src="/JyogiIcon.png"
               alt="JyogiSNS Logo"
               width={80}
               height={80}
