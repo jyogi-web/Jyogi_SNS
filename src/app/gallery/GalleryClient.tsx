@@ -52,11 +52,6 @@ export default function GalleryClient() {
     };
   }, [refresh]);
 
-  const signInOAuth = async (provider: 'github' | 'google') => {
-    const redirectTo = `${location.origin}/gallery`; // ログイン後はギャラリーに戻す
-    await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
     setSelected(null);
@@ -88,18 +83,10 @@ export default function GalleryClient() {
         {!checking && !authed && (
           <section>
             <p>このページを表示するにはログインが必要です。</p>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button onClick={() => signInOAuth('github')} style={{ padding: '10px 14px', borderRadius: 8 }}>
-                GitHubでログイン
-              </button>
-              <button onClick={() => signInOAuth('google')} style={{ padding: '10px 14px', borderRadius: 8 }}>
-                Googleでログイン
-              </button>
-            </div>
-            <p style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-              * Supabase の認証プロバイダ設定で該当プロバイダを有効にし、リダイレクトURLに
-              <code> {`{YOUR_DOMAIN}/auth/v1/callback`}</code> と <code>{`{YOUR_DOMAIN}/gallery`}</code>
-              を追加してください。
+            <p style={{ fontSize: 14, opacity: 0.85, marginTop: 8 }}>
+              <a href="/auth/login" style={{ textDecoration: 'underline' }}>
+                ログインページへ
+              </a>
             </p>
           </section>
         )}

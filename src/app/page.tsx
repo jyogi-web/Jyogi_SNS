@@ -759,9 +759,6 @@ export default function Home() {
                 <div className="mt-2 bg-red-900/40 border border-red-700 text-red-200 text-sm p-3 rounded">
                   <p className="font-semibold mb-1">サインインエラー</p>
                   <pre className="whitespace-pre-wrap break-all text-xs leading-relaxed">{authError}</pre>
-                  <p className="mt-2">
-                    手順: 1) Supabase {'>'} Auth {'>'} Providers {'>'} Twitter のフィールド種別とキー再保存 2) X Developer Portal の User authentication settings を再保存 (Callback / Scope) 3) 再ログイン。
-                  </p>
                 </div>
               )}
             </div>
