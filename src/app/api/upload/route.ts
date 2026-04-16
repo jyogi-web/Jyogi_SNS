@@ -12,7 +12,7 @@ const s3 = new S3Client({
 
 export async function POST(req: NextRequest) {
   const data = await req.json();
-  const { file, fileName } = data;
+  const { file, fileName, contentType } = data;
   console.log("[UPLOAD API] 受信データ:", { fileName, fileSize: file?.length });
   if (!file || !fileName) {
     console.log("[UPLOAD API] fileまたはfileNameが未指定");
@@ -28,7 +28,10 @@ export async function POST(req: NextRequest) {
       Bucket: process.env.R2_TEMP_BUCKET_NAME,
       Key: fileName,
       Body: buffer,
-      ContentType: "image/png",
+      ContentType:
+        typeof contentType === "string" && contentType.startsWith("image/")
+          ? contentType
+          : "image/png",
     });
     console.log("[UPLOAD API] PutObjectCommand作成", { fileName });
     const putResult = await s3.send(command);
