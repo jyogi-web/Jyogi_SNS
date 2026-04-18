@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import LoadingScreenWrapper from "@/components/LoadingScreenWrapper";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import PWAInstaller from "@/components/PWAInstaller";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -53,6 +55,8 @@ export default function RootLayout({
     <html lang="ja">
       <body className={inter.className}>
         <AuthProvider>
+          <ServiceWorkerRegistration />
+          <PWAInstaller />
           <LoadingScreenWrapper>{children}</LoadingScreenWrapper>
         </AuthProvider>
       </body>

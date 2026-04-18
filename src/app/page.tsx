@@ -8,8 +8,6 @@ import Post from "@/components/Post";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
 import { supabase } from "@/utils/supabase/client";
-import PWAInstaller from "@/components/PWAInstaller";
-import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { useAuth } from "@/contexts/AuthContext";
 // 🔧 共通型定義をインポート
 import { PostType, ReplyType, StanpType } from "@/types/post";
@@ -675,8 +673,6 @@ export default function Home() {
 
   return (
     <>
-      <ServiceWorkerRegistration />
-      <PWAInstaller />
       <TutorialModal featureId="timeline" />
       <div className="min-h-screen bg-black text-white">
         <div className="max-w-7xl mx-auto flex lg:h-screen">

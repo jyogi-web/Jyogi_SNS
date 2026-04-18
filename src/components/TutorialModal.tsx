@@ -1,16 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, ChevronRight } from "lucide-react";
+import { X, ChevronRight, Download } from "lucide-react";
 import { getFeature } from "@/app/tutorial/data";
 
 interface Props {
   featureId: string;
 }
 
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
 export default function TutorialModal({ featureId }: Props) {
   const [visible, setVisible] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
 
   const storageKey = `tutorial_modal_${featureId}`;
   const feature = getFeature(featureId);
@@ -20,6 +32,27 @@ export default function TutorialModal({ featureId }: Props) {
     const seen = localStorage.getItem(storageKey);
     if (!seen) setVisible(true);
   }, [storageKey, feature]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setCanInstall(true);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setCanInstall(false);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
 
   if (!visible || !feature) return null;
 
@@ -38,6 +71,15 @@ export default function TutorialModal({ featureId }: Props) {
   const handleClose = () => {
     localStorage.setItem(storageKey, "true");
     setVisible(false);
+  };
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+    setCanInstall(false);
   };
 
   return (
@@ -89,6 +131,28 @@ export default function TutorialModal({ featureId }: Props) {
           <p className="text-gray-300 text-sm leading-relaxed">
             {step.description}
           </p>
+
+          {featureId === "timeline" && stepIndex === 0 && (
+            <div className="mt-4 rounded-xl border border-blue-500/40 bg-blue-950/30 p-3">
+              <p className="text-blue-100 text-xs leading-relaxed mb-2">
+                まずはアプリをインストールしておくと、次回からホーム画面からすぐ開けて便利です。
+              </p>
+              {canInstall ? (
+                <button
+                  onClick={handleInstallClick}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-full bg-blue-600 text-white text-xs font-semibold hover:bg-blue-500 transition-colors"
+                >
+                  <Download size={14} />
+                  アプリをインストール
+                </button>
+              ) : (
+                <p className="text-gray-300 text-xs leading-relaxed">
+                  このブラウザでは自動インストールボタンが出ない場合があります。
+                  その場合は、ブラウザのメニューから「ホーム画面に追加」または「アプリをインストール」を選んでください。
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ボタン */}
