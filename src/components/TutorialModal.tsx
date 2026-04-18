@@ -147,8 +147,8 @@ export default function TutorialModal({ featureId }: Props) {
                 </button>
               ) : (
                 <p className="text-gray-300 text-xs leading-relaxed">
-                  このブラウザでは自動インストールボタンが出ない場合があります。
-                  その場合は、ブラウザのメニューから「ホーム画面に追加」または「アプリをインストール」を選んでください。
+                  このブラウザでは自動インストールボタンが表示できません。
+                  ブラウザのメニューから「ホーム画面に追加」を選んでください。
                 </p>
               )}
             </div>
