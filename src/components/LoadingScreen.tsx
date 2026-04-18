@@ -15,6 +15,30 @@ const loadingTexts = [
   "完了！"
 ];
 
+// 表示するサブタイトルの候補を列挙
+const subtitleOptions = [
+  "脳内直結SNS",
+  "お前も健康最高と叫びなさい！！",
+  "出勤だいしゅき",
+  "先輩の肝臓をみたい",
+  "朝の20分は夜の1時間に相当する……",
+  "嫌がってる人をスタンプにしないと楽しくない",
+  "「50円しかない」「いちご大福串1つ」",
+  "パンツ拾えよ！ちゃんとぉお゛お゛！！！",
+  "酒飲み勢は普段そこそこぱー",
+  "授業ちゃんと聞くとか学生に有るまじき行為",
+  "自分田中将大(しょうだい)分かるよ！",
+  "うんちぐらびてー",
+  "愛とはお金を貸してくれること",
+  "魚に人権は無いです",
+  "皆さん自然に抗ってください",
+  "\"脱\"脱ニート",
+  "CodeRabbitがバニーだったらやる気出るのに",
+  "envファイル家に忘れてきた",
+  "思想が赤くない人にレフトフック",
+  "いつの間にかドパガキ老害指数がぶちあがってる",
+];
+
 // カラーテーマの定義
 const colorThemes = [
   {
@@ -102,6 +126,7 @@ export default function LoadingScreen({ onComplete, isReady }: LoadingScreenProp
   const [isClient, setIsClient] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState(colorThemes[0]);
+  const [subtitle, setSubtitle] = useState<string>("");
   const hasCompletedRef = useRef(false);
   const startTimeRef = useRef<number>(Date.now());
   const completeTimerRef = useRef<number | null>(null);
@@ -127,6 +152,14 @@ export default function LoadingScreen({ onComplete, isReady }: LoadingScreenProp
     // ランダムなカラーテーマを選択
     const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
     setSelectedTheme(randomTheme);
+    // ランダムなサブタイトルを選択
+    try {
+      const randomSubtitle = subtitleOptions[Math.floor(Math.random() * subtitleOptions.length)];
+      setSubtitle(randomSubtitle);
+    } catch (e) {
+      // 万が一のフォールバック
+      setSubtitle("脳内直結SNS");
+    }
   }, []);
 
   const handleComplete = useCallback(() => {
@@ -285,9 +318,9 @@ export default function LoadingScreen({ onComplete, isReady }: LoadingScreenProp
           JyogiSNS
         </h1>
         
-        {/* サブタイトル */}
+        {/* サブタイトル（ランダム表示） */}
         <p className="text-gray-400 text-xl mb-10 tracking-wide">
-          脳内直結SNS
+          {subtitle || "脳内直結SNS"}
         </p>
 
         {/* プログレスバー */}
