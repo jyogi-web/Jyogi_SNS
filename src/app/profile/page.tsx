@@ -218,6 +218,63 @@ function ProfilePageContent() {
     setModal(prev => ({ ...prev, isOpen: false }));
   };
 
+  const uploadProfileImageToR2 = useCallback(
+    async (file: File, userId: string, kind: "icon" | "banner") => {
+      const extension = file.name.split(".").pop()?.toLowerCase() || "png";
+      const safeExtension = extension.replace(/[^a-z0-9]/g, "") || "png";
+      const fileName = `${kind}_${userId}_${Date.now()}.${safeExtension}`;
+
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          if (typeof reader.result !== "string") {
+            reject(new Error("ファイル読み込みに失敗しました"));
+            return;
+          }
+
+          const [, payload] = reader.result.split(",");
+          if (!payload) {
+            reject(new Error("画像データの変換に失敗しました"));
+            return;
+          }
+
+          resolve(payload);
+        };
+
+        reader.onerror = () => {
+          reject(new Error("画像ファイルの読み込み中にエラーが発生しました"));
+        };
+
+        reader.readAsDataURL(file);
+      });
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          file: base64,
+          fileName,
+          contentType: file.type,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.error || "画像アップロードに失敗しました");
+      }
+
+      if (typeof result?.imageUrl !== "string" || !result.imageUrl) {
+        throw new Error("アップロード後の画像URLが取得できませんでした");
+      }
+
+      return result.imageUrl;
+    },
+    []
+  );
+
   // 画像URL変換関数をメモ化
   const getPublicIconUrl = useCallback((iconUrl?: string) => {
     if (!iconUrl) return "";
@@ -762,17 +819,7 @@ function ProfilePageContent() {
 
     setUploading(true);
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${userId}-icon-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from("images")
-        .upload(fileName, file);
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("images")
-        .getPublicUrl(fileName);
-      const iconUrl = urlData.publicUrl;
+      const iconUrl = await uploadProfileImageToR2(file, userId, "icon");
 
       const { error: updateError } = await supabase
         .from("usels")
@@ -783,7 +830,9 @@ function ProfilePageContent() {
       setFormData(prev => ({ ...prev, iconUrl }));
       showModal("アップロード完了", "アイコンが更新されました！", "success");
     } catch (error) {
-      showModal("アップロードエラー", "アイコンアップロードに失敗しました", "error");
+      console.error("アイコンアップロード失敗:", error);
+      const message = error instanceof Error ? error.message : "不明なエラー";
+      showModal("アップロードエラー", `アイコンアップロードに失敗しました: ${message}`, "error");
     } finally {
       setUploading(false);
     }
@@ -811,17 +860,7 @@ function ProfilePageContent() {
 
     setBannerUploading(true);
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${userId}-banner-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage
-        .from("images")
-        .upload(fileName, file);
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("images")
-        .getPublicUrl(fileName);
-      const bannerUrl = urlData.publicUrl;
+      const bannerUrl = await uploadProfileImageToR2(file, userId, "banner");
 
       const { error: updateError } = await supabase
         .from("usels")
@@ -832,7 +871,9 @@ function ProfilePageContent() {
       setFormData(prev => ({ ...prev, bannerUrl }));
       showModal("アップロード完了", "バナー画像が更新されました！", "success");
     } catch (error) {
-      showModal("アップロードエラー", "バナー画像アップロードに失敗しました", "error");
+      console.error("バナー画像アップロード失敗:", error);
+      const message = error instanceof Error ? error.message : "不明なエラー";
+      showModal("アップロードエラー", `バナー画像アップロードに失敗しました: ${message}`, "error");
     } finally {
       setBannerUploading(false);
     }

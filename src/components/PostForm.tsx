@@ -316,7 +316,11 @@ export default function PostForm({
                 <textarea
                   value={text}
                   onChange={(e) => handleTextChange(e.target.value)}
-                  placeholder="今何してる？"
+                  placeholder={
+                    user
+                      ? "今何してる？"
+                      : "投稿するにはログインorサインアップしてください"
+                  }
                   className="w-full bg-transparent text-white placeholder-gray-500 resize-none outline-none text-xl min-h-[120px] relative z-10 px-3 py-2"
                   rows={3}
                   maxLength={280}
