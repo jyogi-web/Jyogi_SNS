@@ -60,14 +60,6 @@
 
 ---
 
-## 5️⃣ 特殊機能画面
-
-| ID   | 画面名             | URL                      | 役割                              | 認証  | 優先度 |
-| ---- | --------------- | ------------------------ | ------------------------------- | --- | --- |
-| S-19 | TikuriBar（音声通話） | `/tikuribar`             | WebSocket / WebRTC リアルタイム音声通話ルーム | 必須  | P2  |
-
----
-
 ## 凡例
 
 | 項目 | 値         | 説明                         |
@@ -128,10 +120,6 @@ flowchart TD
         GALLERY["🖼️ ギャラリー\n/gallery"]
     end
 
-    subgraph SPECIAL["✨ 特殊機能"]
-        TIKURIBAR["🎙️ TikuriBar\n/tikuribar"]
-    end
-
     HOME -->|"未ログイン時\nナビから"| LOGIN
     LOGIN --> HOME
     LOGIN --> SIGNUP
@@ -150,8 +138,6 @@ flowchart TD
     HOME --> REACTIONS
     HOME --> REALCTION
     HOME --> GALLERY
-    HOME --> TIKURIBAR
-
     SEARCH --> USER_PROF
     USER_PROF --> MSG_LIST
     USER_PROF --> REALCTION
@@ -286,5 +272,4 @@ flowchart TD
 /reactions                 ← リアクション一覧
 /realction                 ← リアクション投稿（Webカメラ）
 /gallery                   ← ギャラリー
-/tikuribar                 ← TikuriBar 音声通話
 ```

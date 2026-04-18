@@ -1,6 +1,9 @@
 
 \restrict yWYD57IDBaBevB5PPT8guwfLEng5Jn1YaDYa1d8lN9OVdXzH1F0KdGQiobwBzOz
 
+-- NOTE (2026-04):
+-- TikuriBar のアプリ機能は削除済みだが、Supabase 側の tikuribar_* テーブル/ポリシーはまだ残ってます
+
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;

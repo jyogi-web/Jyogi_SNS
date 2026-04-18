@@ -5,14 +5,8 @@ import {
   Search,
   Bell,
   Mail,
-  Bookmark,
   User,
   LogIn,
-  Clock,
-  Heart,
-  CloudSun,
-  Wine,
-  Camera,
   LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -87,7 +81,7 @@ export default function MobileNavigation() {
   return (
     <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-black/95 backdrop-blur-md border-t border-gray-800 z-50 safe-area-pb">
       <div className="flex items-center justify-between px-2 py-2 max-w-md mx-auto">
-        {mobileMenuItems.map((item, index) => {
+        {mobileMenuItems.map((item) => {
           // カスタムクリックハンドラーがある場合はbutton要素を使用
           if (item.onClick) {
             return (

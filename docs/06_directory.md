@@ -108,8 +108,7 @@ src/
 ├── lib/               # 外部サービスクライアント
 │   ├── supabase/
 │   │   └── client.ts          # Supabaseクライアント
-│   └── tikuribar/
-│       └── websocketServer.ts # WebSocketサーバー
+│
 │
 ├── utils/             # ユーティリティ
 │   └── supabase/
@@ -122,7 +121,6 @@ src/
 │   └── mockNotificationData.ts # 通知のモックデータ
 │
 ├── scripts/           # スクリプト
-│   └── startTikuriBarServer.ts # TikuriBarのWebSocketサーバー起動スクリプト
 │
 └── types/             # 型定義
     ├── index.ts               # 共通型定義（ユーザー・投稿等）

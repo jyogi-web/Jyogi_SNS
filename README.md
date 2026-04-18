@@ -1,7 +1,7 @@
 # Jyogi SNS
 
 Jyogi SNS は、Tikuru24 をフォークして部内利用向けに改造した SNS です。
-リアルタイム投稿、DM、通知、検索、プロフィール、AI チャット、地図投稿、ボイスチャットを 1 つのアプリに統合しています。
+リアルタイム投稿、DM、通知、検索、プロフィール、AI チャット、地図投稿を 1 つのアプリに統合しています。
 
 ## 重要: 24時間自動削除について
 
@@ -31,7 +31,7 @@ Supabase と Cloudflare R2 の無料枠に収めるため、
 
 注: 認証画面の「リンク期限切れ」表示は認証トークン期限の話であり、投稿TTLとは別です。
 
-## 削除予定一覧（24時間関連 + TikuriBAR + Glok）
+## 削除予定一覧（24時間関連 + Glok）
 
 以下は「削除予定機能」として、現時点でコード上に残っている主な箇所です。
 
@@ -47,24 +47,7 @@ Supabase と Cloudflare R2 の無料枠に収めるため、
 	- `src/app/page.tsx`
 	- 24時間経過チェックのデバッグログ（表示UIではなくログ）
 
-### B. TikuriBAR（音声/チャット）
-
-- 画面本体
-	- `src/app/tikuribar/page.tsx`
-	- `src/app/tikuribar/test/page.tsx`
-- クライアント側フック
-	- `src/app/tikuribar/hooks/useWebSocket.ts`
-	- `src/app/tikuribar/hooks/useBarAudio.ts`
-- WebSocketサーバー実装
-	- `src/scripts/startTikuriBarServer.ts`
-	- `src/lib/tikuribar/websocketServer.ts`
-- 他画面からの参照
-	- `src/app/search/page.tsx`（TikuriBARライブ表示、WS接続、遷移）
-	- `src/components/Sidebar.tsx`（`/tikuribar` ナビ項目）
-	- `src/components/MobileExtendedNavigation.tsx`（`/tikuribar` ナビ項目）
-	- `src/app/tutorial/data.ts`（TikuriBARチュートリアル定義）
-
-### C. Glok（AIチャット）
+### B. Glok（AIチャット）
 
 - 画面本体/配下実装
 	- `src/app/glok/page.tsx`
@@ -116,7 +99,6 @@ Supabase と Cloudflare R2 の無料枠に収めるため、
 | Glok（AIチャット） | 実装済み | `/api/gemini-api`、履歴は localStorage |
 | Map（スポット投稿） | 実装済み | Google Maps API 利用、投稿・いいね対応 |
 | ニュース表示 | 実装済み | `/api/news` で RSS 取得（失敗時フォールバック） |
-| TikuriBAR（音声/チャット） | 実装済み | WebSocket（`NEXT_PUBLIC_WS_URL`） |
 | REALction（カメラ投稿） | 実装済み | カメラ撮影/アップロード、ギャラリー連携 |
 | Reactions（お絵描き） | 実装済み | キャンバス描画 + 画像アップロード |
 
@@ -133,7 +115,6 @@ Supabase と Cloudflare R2 の無料枠に収めるため、
 - `/settings`
 - `/glok`
 - `/map`
-- `/tikuribar`
 - `/realction`
 - `/reactions`
 - `/tutorial`, `/tutorial/[feature]`, `/tutorial/complete`
@@ -166,8 +147,6 @@ Supabase と Cloudflare R2 の無料枠に収めるため、
 | AI | Google Gemini API |
 | 地図 | Google Maps JavaScript API |
 | 通知 | Service Worker + Web Push |
-| 音声/チャット | WebSocket (`ws`) |
-
 ## セットアップ
 
 ### 前提
@@ -212,9 +191,6 @@ R2_TEMP_BUCKET_NAME=
 NEXT_PUBLIC_VAPID_KEY=
 VAPID_PRIVATE_KEY=
 
-# TikuriBAR
-NEXT_PUBLIC_WS_URL=ws://localhost:8080
-
 # Optional
 LOG_LEVEL=INFO
 ```
@@ -249,17 +225,7 @@ npm run start
 3. `npm run dev` で起動
 4. ログイン/サインアップ、投稿、いいね、DM、通知画面を一通り確認
 
-### 2. TikuriBAR 開発時の追加手順
-
-TikuriBAR は Next.js サーバーとは別に WebSocket サーバーを使います。
-
-```bash
-npx tsx src/scripts/startTikuriBarServer.ts
-```
-
-`NEXT_PUBLIC_WS_URL` を接続先に合わせて設定してください。
-
-### 3. 実装確認の最低チェックリスト
+### 2. 実装確認の最低チェックリスト
 
 - ログイン/ログアウトできる
 - ホームで投稿作成・いいね・ブックマーク・リプライができる
@@ -268,7 +234,7 @@ npx tsx src/scripts/startTikuriBarServer.ts
 - 通知一覧が取得できる
 - 設定画面で通知設定を保存できる
 
-### 4. 日常開発コマンド
+### 3. 日常開発コマンド
 
 ```bash
 npm run dev
@@ -295,4 +261,5 @@ npm run build
 
 - 24時間自動削除は無効です（削除は手動）
 - 24時間関連の残存は「DM残り時間表示」「投稿フォームの24時間BAN文言/ロジック」「ホームのデバッグログ」です
+- Supabase 側の `tikuribar_*` テーブル/ポリシーは後続で整理予定です（現時点では未削除）
 - `/api/upload-icon` はプレースホルダ定数が残っているため、運用前に実値へ置換が必要です

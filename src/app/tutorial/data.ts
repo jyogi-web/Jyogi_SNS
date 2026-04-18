@@ -207,36 +207,6 @@ export const TUTORIAL_FEATURES: TutorialFeature[] = [
     ],
   },
   {
-    id: "tikuribar",
-    title: "TikuriBAR",
-    emoji: "🍸",
-    shortDescription: "リアルタイム音声でつながるバー空間",
-    path: "/tikuribar",
-    category: "feature",
-    steps: [
-      {
-        title: "TikuriBARとは",
-        description:
-          "バーのような雰囲気でメンバーとリアルタイムに音声・テキストでつながれる空間です。複数のバールームを自由に行き来できます。",
-      },
-      {
-        title: "バーに入ってみよう",
-        description:
-          "既存のバー一覧から好きなバーを選んで「入室」ボタンを押しましょう。他のメンバーがいれば一緒に話せます。",
-      },
-      {
-        title: "バーを作ってみよう",
-        description:
-          "「バーを作る」ボタンからバー名を決めて自分のバーを開設できます。他のメンバーに参加してもらいましょう。",
-      },
-      {
-        title: "マイク・スピーカーを操作しよう",
-        description:
-          "入室後はマイクアイコンで発言のオン/オフ、スピーカーアイコンで受聴のオン/オフを切り替えられます。",
-      },
-    ],
-  },
-  {
     id: "realction",
     title: "REALction",
     emoji: "📸",

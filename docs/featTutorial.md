@@ -83,7 +83,6 @@ TutorialFeature {
 | `map` | おすすめスポット | feature | 3 | `/map` |
 | `stamp` | リアクション | feature | 3 | `/reactions` |
 | `clock` | Clock | feature | 3 | `/glok` |
-| `tikuribar` | TikuriBAR | feature | 4 | `/tikuribar` |
 | `realction` | REALction | feature | 3 | `/realction` |
 
 新しい機能のチュートリアルを追加する場合は、このファイルに `TutorialFeature` オブジェクトを追記するだけでよい。
@@ -137,7 +136,6 @@ localStorage に `tutorial_modal_{featureId}` が存在するか確認
   📍 おすすめスポット
   🎨 リアクション
   🕐 Clock
-  🍸 TikuriBAR
   📸 REALction
 ```
 
@@ -168,7 +166,6 @@ localStorage に `tutorial_modal_{featureId}` が存在するか確認
 | `src/app/notifications/page.tsx` | `notifications` |
 | `src/app/bookmarks/page.tsx` | `bookmarks` |
 | `src/app/search/page.tsx` | `search` |
-| `src/app/tikuribar/page.tsx` | `tikuribar` |
 | `src/app/realction/page.tsx` | `realction` |
 | `src/app/glok/page.tsx` | `clock` |
 
