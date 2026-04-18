@@ -685,9 +685,9 @@ export default function Home() {
           <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 pb-20 lg:pb-0 lg:overflow-y-auto">
             {/* ヘッダー */}
             <div className="sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 p-4 z-40">
-              {/* モバイル: タイトルと認証ボタン */}
-              <div className="lg:hidden flex items-center justify-between">
-                <h1 className="text-xl font-bold">ホーム</h1>
+              {/* タイトルと認証ボタン */}
+              <div className="flex items-center justify-between lg:justify-end">
+                <h1 className="text-xl font-bold lg:hidden">ホーム</h1>
                 {isClient && (
                   <div className="flex items-center space-x-2">
                     {user ? (
