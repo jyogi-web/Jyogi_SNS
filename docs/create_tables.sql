@@ -1127,229 +1127,161 @@ GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 
 
 GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
-GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
 
 
 
-GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "anon";
-GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."bookmarks" TO "anon";
-GRANT ALL ON TABLE "public"."bookmarks" TO "authenticated";
 GRANT ALL ON TABLE "public"."bookmarks" TO "service_role";
 GRANT SELECT ON TABLE "public"."bookmarks" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."follows" TO "anon";
-GRANT ALL ON TABLE "public"."follows" TO "authenticated";
 GRANT ALL ON TABLE "public"."follows" TO "service_role";
 GRANT SELECT ON TABLE "public"."follows" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."infrastructure_logs" TO "anon";
-GRANT ALL ON TABLE "public"."infrastructure_logs" TO "authenticated";
 GRANT ALL ON TABLE "public"."infrastructure_logs" TO "service_role";
 GRANT SELECT ON TABLE "public"."infrastructure_logs" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."likes" TO "anon";
-GRANT ALL ON TABLE "public"."likes" TO "authenticated";
 GRANT ALL ON TABLE "public"."likes" TO "service_role";
 GRANT SELECT ON TABLE "public"."likes" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."make_stamp" TO "anon";
-GRANT ALL ON TABLE "public"."make_stamp" TO "authenticated";
 GRANT ALL ON TABLE "public"."make_stamp" TO "service_role";
 GRANT SELECT ON TABLE "public"."make_stamp" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."messages" TO "anon";
-GRANT ALL ON TABLE "public"."messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."messages" TO "service_role";
 GRANT SELECT ON TABLE "public"."messages" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."notification_settings" TO "anon";
-GRANT ALL ON TABLE "public"."notification_settings" TO "authenticated";
 GRANT ALL ON TABLE "public"."notification_settings" TO "service_role";
 GRANT SELECT ON TABLE "public"."notification_settings" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."notifications" TO "anon";
-GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
 GRANT ALL ON TABLE "public"."notifications" TO "service_role";
 GRANT SELECT ON TABLE "public"."notifications" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."push_subscriptions" TO "anon";
-GRANT ALL ON TABLE "public"."push_subscriptions" TO "authenticated";
 GRANT ALL ON TABLE "public"."push_subscriptions" TO "service_role";
 GRANT SELECT ON TABLE "public"."push_subscriptions" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."realction" TO "anon";
-GRANT ALL ON TABLE "public"."realction" TO "authenticated";
 GRANT ALL ON TABLE "public"."realction" TO "service_role";
 GRANT SELECT ON TABLE "public"."realction" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."replies" TO "anon";
-GRANT ALL ON TABLE "public"."replies" TO "authenticated";
 GRANT ALL ON TABLE "public"."replies" TO "service_role";
 GRANT SELECT ON TABLE "public"."replies" TO "backup_readonly";
 GRANT SELECT,DELETE ON TABLE "public"."replies" TO "backup_cleanup";
 
 
 
-GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."spot_posts" TO "anon";
-GRANT ALL ON TABLE "public"."spot_posts" TO "authenticated";
 GRANT ALL ON TABLE "public"."spot_posts" TO "service_role";
 GRANT SELECT ON TABLE "public"."spot_posts" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."stamp" TO "anon";
-GRANT ALL ON TABLE "public"."stamp" TO "authenticated";
 GRANT ALL ON TABLE "public"."stamp" TO "service_role";
 GRANT SELECT ON TABLE "public"."stamp" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."text_" TO "anon";
-GRANT ALL ON TABLE "public"."text_" TO "authenticated";
 GRANT ALL ON TABLE "public"."text_" TO "service_role";
 GRANT SELECT ON TABLE "public"."text_" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "anon";
-GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."tikuribar_chat_messages" TO "service_role";
 GRANT SELECT ON TABLE "public"."tikuribar_chat_messages" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."tikuribar_participants" TO "anon";
-GRANT ALL ON TABLE "public"."tikuribar_participants" TO "authenticated";
 GRANT ALL ON TABLE "public"."tikuribar_participants" TO "service_role";
 GRANT SELECT ON TABLE "public"."tikuribar_participants" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "anon";
-GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "authenticated";
 GRANT ALL ON TABLE "public"."tikuribar_rooms" TO "service_role";
 GRANT SELECT ON TABLE "public"."tikuribar_rooms" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "anon";
-GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."tikuribar_voice_messages" TO "service_role";
 GRANT SELECT ON TABLE "public"."tikuribar_voice_messages" TO "backup_readonly";
 
 
 
-GRANT ALL ON TABLE "public"."todos" TO "anon";
-GRANT ALL ON TABLE "public"."todos" TO "authenticated";
 GRANT ALL ON TABLE "public"."todos" TO "service_role";
 GRANT SELECT ON TABLE "public"."todos" TO "backup_readonly";
 GRANT SELECT,DELETE ON TABLE "public"."todos" TO "backup_cleanup";
 
 
 
-GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."usels" TO "anon";
-GRANT ALL ON TABLE "public"."usels" TO "authenticated";
 GRANT ALL ON TABLE "public"."usels" TO "service_role";
 GRANT SELECT ON TABLE "public"."usels" TO "backup_readonly";
 
 
 
-GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "anon";
-GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."users" TO "anon";
-GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
 GRANT SELECT ON TABLE "public"."users" TO "backup_readonly";
 
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
 
 
@@ -1358,8 +1290,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQ
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
 
 
@@ -1368,7 +1298,5 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUN
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT ON TABLES TO "backup_readonly";
