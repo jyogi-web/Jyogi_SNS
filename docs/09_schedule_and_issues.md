@@ -20,8 +20,7 @@
 
 ## 🔎 直近の追記（2026-04）
 
-- TikuriBar のフロント/アプリ機能は削除済み。
-- Supabase 側の `tikuribar_*` テーブル・RLS・関連ポリシーの削除は後続対応。
+- TikuriBar のフロント/アプリ機能と Supabase 側の `tikuribar_*` テーブル/ポリシーは削除済み。
 
 ## 3月 スケジュール
 
