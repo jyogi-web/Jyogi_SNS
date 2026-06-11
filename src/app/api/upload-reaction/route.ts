@@ -44,9 +44,7 @@ export async function POST(req: NextRequest) {
     // R2_ENDPOINTがcloudflarestorage.comの場合はpub-...r2.devに変換
     let publicUrl: string;
     if (R2_ENDPOINT.includes("cloudflarestorage.com")) {
-      // 例: https://da1ba209d61b3c9fb6834468fb0bb4f4.r2.cloudflarestorage.com → https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev
-      // pub-...部分はユーザーのR2公開設定に合わせてください
-      publicUrl = `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${fileName}`;
+      publicUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
     } else {
       publicUrl = `${R2_ENDPOINT}/${fileName}`;
     }

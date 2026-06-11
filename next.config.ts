@@ -3,9 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   images: {
-    domains: [
-      "pub-1d11d6a89cf341e7966602ec50afd166.r2.dev",
-      // 他に許可したいドメインがあればここに追加
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "pub-8a72d0656f234f4f8b057562db9d565a.r2.dev",
+        pathname: "/**",
+      },
     ],
   },
 

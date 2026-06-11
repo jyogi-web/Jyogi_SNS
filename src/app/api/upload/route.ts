@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const putResult = await s3.send(command);
     console.log("[UPLOAD API] R2アップロード完了", { fileName, putResult });
     // 画像URLを生成（R2のパブリックURL形式）
-    const imageUrl = `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${fileName}`;
+    const imageUrl = `${process.env.R2_PUBLIC_URL}/${fileName}`;
     console.log("[UPLOAD API] 返却imageUrl", imageUrl);
     return NextResponse.json({ message: "Uploaded", imageUrl });
   } catch (e) {

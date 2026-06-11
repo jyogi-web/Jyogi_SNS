@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       }),
     );
 
-    const imageUrl = `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${key}`;
+    const imageUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
     return NextResponse.json({ imageUrl, key });
   } catch (e: any) {
     return NextResponse.json(
