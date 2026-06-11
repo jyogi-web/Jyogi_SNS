@@ -4,7 +4,6 @@ import {
   Clock,
   Heart,
   MapPin,
-  Wine,
   Camera,
   Plus,
   MoreHorizontal,
@@ -50,7 +49,6 @@ export default function MobileExtendedNavigation() {
     { icon: Heart, label: "リアクション", href: "/reactions", color: "text-pink-400" },
     { icon: Camera, label: "REALction", href: "/realction", color: "text-purple-400" },
     { icon: MapPin, label: "おすすめスポット", href: "/map", color: "text-green-400" },
-    { icon: Wine, label: "TikuriBAR", href: "/tikuribar", color: "text-green-400" },
     ...(user ? [{
       icon: Plus,
       label: "投稿",

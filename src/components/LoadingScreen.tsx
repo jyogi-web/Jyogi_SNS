@@ -1,11 +1,43 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 
 interface LoadingScreenProps {
   onComplete: () => void;
+  isReady: boolean;
 }
+
+const loadingTexts = [
+  "初期化中...",
+  "認証情報を確認中...",
+  "表示準備中...",
+  "完了！"
+];
+
+// 表示するサブタイトルの候補を列挙
+const subtitleOptions = [
+  "脳内直結SNS",
+  "お前も健康最高と叫びなさい！！",
+  "出勤だいしゅき",
+  "先輩の肝臓をみたい",
+  "朝の20分は夜の1時間に相当する……",
+  "嫌がってる人をスタンプにしないと楽しくない",
+  "「50円しかない」「いちご大福串1つ」",
+  "パンツ拾えよ！ちゃんとぉお゛お゛！！！",
+  "酒飲み勢は普段そこそこぱー",
+  "授業ちゃんと聞くとか学生に有るまじき行為",
+  "自分田中将大(しょうだい)分かるよ！",
+  "うんちぐらびてー",
+  "愛とはお金を貸してくれること",
+  "魚に人権は無いです",
+  "皆さん自然に抗ってください",
+  "\"脱\"脱ニート",
+  "CodeRabbitがバニーだったらやる気出るのに",
+  "envファイル家に忘れてきた",
+  "思想が赤くない人にレフトフック",
+  "いつの間にかドパガキ老害指数がぶちあがってる",
+];
 
 // カラーテーマの定義
 const colorThemes = [
@@ -89,27 +121,29 @@ const colorThemes = [
   }
 ];
 
-export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
+export default function LoadingScreen({ onComplete, isReady }: LoadingScreenProps) {
   const [progress, setProgress] = useState(0);
-  const [isVisible, setIsVisible] = useState(true);
-  const [currentText, setCurrentText] = useState("");
   const [isClient, setIsClient] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState(colorThemes[0]);
+  const [subtitle, setSubtitle] = useState<string>("");
+  const hasCompletedRef = useRef(false);
+  const startTimeRef = useRef<number>(Date.now());
+  const completeTimerRef = useRef<number | null>(null);
 
-  const loadingTexts = [
-    "初期化中...",
-    "データ読み込み中...",
-    "設定を適用中...",
-    "完了！"
-  ];
+  // パーティクル位置を固定して、進捗更新時にチラつかないようにする
+  const particlePositions = useMemo(() => {
+    if (!isClient) {
+      return [];
+    }
 
-  // クライアントサイドでのみパーティクルを生成
-  const particlePositions = isClient ? [...Array(20)].map(() => ({
-    left: `${Math.random() * 100}%`,
-    top: `${Math.random() * 100}%`,
-    delay: `${Math.random() * 3}s`,
-    duration: `${2 + Math.random() * 2}s`
-  })) : [];
+    return Array.from({ length: 20 }, () => ({
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      delay: `${Math.random() * 3}s`,
+      duration: `${2 + Math.random() * 2}s`
+    }));
+  }, [isClient]);
 
   useEffect(() => {
     // クライアントサイドであることを確認
@@ -118,69 +152,125 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
     // ランダムなカラーテーマを選択
     const randomTheme = colorThemes[Math.floor(Math.random() * colorThemes.length)];
     setSelectedTheme(randomTheme);
+    // ランダムなサブタイトルを選択
+    try {
+      const randomSubtitle = subtitleOptions[Math.floor(Math.random() * subtitleOptions.length)];
+      setSubtitle(randomSubtitle);
+    } catch (e) {
+      // 万が一のフォールバック
+      setSubtitle("脳内直結SNS");
+    }
   }, []);
 
+  const handleComplete = useCallback(() => {
+    if (hasCompletedRef.current) {
+      return;
+    }
+
+    hasCompletedRef.current = true;
+    setProgress(100);
+    setIsExiting(true);
+
+    completeTimerRef.current = window.setTimeout(() => {
+      onComplete();
+    }, 600);
+  }, [onComplete]);
+
   useEffect(() => {
-    // プログレスバーのアニメーション
-    const progressInterval = setInterval(() => {
+    // 進捗は「待機中は 88% まで」「準備完了後に 100% まで」進める
+    const progressInterval = window.setInterval(() => {
       setProgress((prev) => {
-        const newProgress = prev + Math.random() * 12 + 3;
-        if (newProgress >= 100) {
-          clearInterval(progressInterval);
+        if (prev >= 100) {
           return 100;
         }
-        return newProgress;
+
+        if (isReady) {
+          const readyProgress = prev + Math.random() * 18 + 8;
+          return Math.min(readyProgress, 100);
+        }
+
+        const waitingCap = 88;
+        if (prev >= waitingCap) {
+          return prev;
+        }
+
+        const waitingStep = Math.max((waitingCap - prev) * 0.12, 0.8);
+        return Math.min(prev + waitingStep, waitingCap);
       });
     }, 120);
 
-    // テキストの更新
-    const textInterval = setInterval(() => {
-      const progressPercent = Math.min(progress, 100);
+    return () => {
+      window.clearInterval(progressInterval);
+    };
+  }, [isReady]);
+
+  const currentText = useMemo(() => {
+    const progressPercent = Math.min(progress, 100);
+
+    if (progressPercent >= 100) {
+      return loadingTexts[3];
+    }
+
+    if (!isReady) {
       if (progressPercent < 25) {
-        setCurrentText(loadingTexts[0]);
-      } else if (progressPercent < 50) {
-        setCurrentText(loadingTexts[1]);
-      } else if (progressPercent < 75) {
-        setCurrentText(loadingTexts[2]);
-      } else {
-        setCurrentText(loadingTexts[3]);
+        return loadingTexts[0];
       }
-    }, 200);
-
-    // 最小表示時間（2.5秒）
-    const minDisplayTimer = setTimeout(() => {
-      if (progress >= 100) {
-        handleComplete();
+      if (progressPercent < 60) {
+        return loadingTexts[1];
       }
-    }, 2500);
+      return loadingTexts[2];
+    }
 
-    // 最大表示時間（4.5秒）
-    const maxDisplayTimer = setTimeout(() => {
+    return "最終確認中...";
+  }, [progress, isReady]);
+
+  useEffect(() => {
+    if (!isReady || progress < 100) {
+      return;
+    }
+
+    // 最小表示時間（1.2秒）
+    const elapsed = Date.now() - startTimeRef.current;
+    const waitTime = Math.max(1200 - elapsed, 0);
+
+    const minDisplayTimer = window.setTimeout(() => {
       handleComplete();
-    }, 4500);
+    }, waitTime);
 
     return () => {
-      clearInterval(progressInterval);
-      clearInterval(textInterval);
-      clearTimeout(minDisplayTimer);
-      clearTimeout(maxDisplayTimer);
+      window.clearTimeout(minDisplayTimer);
     };
-  }, [progress]);
+  }, [isReady, progress, handleComplete]);
 
-  const handleComplete = () => {
-    setIsVisible(false);
-    setTimeout(() => {
-      onComplete();
-    }, 600);
-  };
+  useEffect(() => {
+    // フォールバック: 10秒で強制完了
+    const maxDisplayTimer = window.setTimeout(() => {
+      handleComplete();
+    }, 10000);
 
-  if (!isVisible) return null;
+    return () => {
+      window.clearTimeout(maxDisplayTimer);
+    };
+  }, [handleComplete]);
+
+  useEffect(() => {
+    return () => {
+      if (completeTimerRef.current !== null) {
+        window.clearTimeout(completeTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
+    <div className={`fixed inset-0 bg-black z-50 flex items-center justify-center transition-opacity duration-500 ${isExiting ? "opacity-0" : "opacity-100"}`}>
       {/* 背景エフェクト */}
       <div className={`absolute inset-0 bg-gradient-to-br ${selectedTheme.background}`}></div>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_transparent_0%,_${selectedTheme.radialGradient}_100%)]"></div>
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(circle at center, transparent 0%, ${selectedTheme.radialGradient} 100%)`
+        }}
+      ></div>
       
       {/* 浮遊するパーティクル - クライアントサイドでのみレンダリング */}
       {isClient && (
@@ -209,7 +299,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           {/* メインアイコン - ロゴ画像を使用 */}
           <div className={`relative w-28 h-28 bg-gradient-to-br ${selectedTheme.iconBg} rounded-full flex items-center justify-center shadow-2xl p-4`}>
             <Image
-              src="/Tikuru24logo.png"
+              src="/JyogiIcon.png"
               alt="JyogiSNS"
               width={80}
               height={80}
@@ -228,9 +318,9 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           JyogiSNS
         </h1>
         
-        {/* サブタイトル */}
+        {/* サブタイトル（ランダム表示） */}
         <p className="text-gray-400 text-xl mb-10 tracking-wide">
-          瞬間で繋がるSNS
+          {subtitle || "脳内直結SNS"}
         </p>
 
         {/* プログレスバー */}
@@ -253,7 +343,7 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
 
         {/* プログレスパーセンテージ */}
         <div className="mt-4 text-gray-500 text-sm font-mono">
-          {Math.round(progress)}%
+          {Math.round(Math.min(progress, 100))}%
         </div>
       </div>
 

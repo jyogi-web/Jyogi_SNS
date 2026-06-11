@@ -11,7 +11,6 @@ import {
   Clock,
   Heart,
   MapPin,
-  Wine,
   Camera,
   GraduationCap,
 } from "lucide-react";
@@ -92,7 +91,6 @@ export default function Sidebar() {
     { icon: Heart, label: "リアクション", href: "/reactions" },
     { icon: Camera, label: "REALction", href: "/realction" },
     { icon: MapPin, label: "おすすめスポット", href: "/map" },
-    { icon: Wine, label: "TikuriBAR", href: "/tikuribar" },
     { icon: GraduationCap, label: "使い方ガイド", href: "/tutorial" },
     { icon: User, label: "プロフィール", href: "/profile" },
     { icon: Settings, label: "設定", href: "/settings" },

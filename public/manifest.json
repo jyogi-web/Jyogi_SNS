@@ -1,7 +1,7 @@
 {
     "name": "JyogiSNS",
     "short_name": "JyogiSNS",
-    "description": "瞬間で繋がるSNS",
+    "description": "脳内直結SNS",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",

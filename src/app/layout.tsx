@@ -1,18 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import LoadingScreenWrapper from "@/components/LoadingScreenWrapper";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import PWAInstaller from "@/components/PWAInstaller";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Jyogi_SNS",
-  description: "JyogiSNS - 瞬間で繋がるSNS",
+  description: "JyogiSNS - 脳内直結SNS",
   manifest: "/manifest.json",
-  themeColor: "#000000",
-  viewport:
-    "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -25,18 +24,26 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "JyogiSNS",
     title: "JyogiSNS",
-    description: "JyogiSNS - 瞬間で繋がるSNS",
+    description: "JyogiSNS - 脳内直結SNS",
   },
   twitter: {
     card: "summary",
     title: "JyogiSNS",
-    description: "JyogiSNS - 瞬間で繋がるSNS",
+    description: "JyogiSNS - 脳内直結SNS",
   },
   icons: {
     icon: "/favicon.ico",
     shortcut: "/JyogiIcon.png",
     apple: "/JyogiIcon.png",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -48,6 +55,8 @@ export default function RootLayout({
     <html lang="ja">
       <body className={inter.className}>
         <AuthProvider>
+          <ServiceWorkerRegistration />
+          <PWAInstaller />
           <LoadingScreenWrapper>{children}</LoadingScreenWrapper>
         </AuthProvider>
       </body>

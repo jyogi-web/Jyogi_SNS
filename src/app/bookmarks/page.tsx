@@ -210,53 +210,28 @@ export default function BookmarksPage() {
         .eq("user_id", userId)
         .maybeSingle();
 
-      const { data: todoData } = await supabase
-        .from("todos")
-        .select("likes")
-        .eq("id", postIdNum)
-        .single();
-      const currentLikes = todoData?.likes ?? 0;
-
       if (likeData?.on) {
         // いいね解除
-        await Promise.all([
-          supabase
-            .from("likes")
-            .update({ on: false })
-            .eq("post_id", postIdNum)
-            .eq("user_id", userId),
-          supabase
-            .from("todos")
-            .update({ likes: Math.max(currentLikes - 1, 0) })
-            .eq("id", postIdNum)
-        ]);
+        await supabase
+          .from("likes")
+          .update({ on: false })
+          .eq("post_id", postIdNum)
+          .eq("user_id", userId);
       } else {
         // いいね処理
         if (likeData) {
-          await Promise.all([
-            supabase
-              .from("likes")
-              .update({ on: true })
-              .eq("post_id", postIdNum)
-              .eq("user_id", userId),
-            supabase
-              .from("todos")
-              .update({ likes: currentLikes + 1 })
-              .eq("id", postIdNum)
-          ]);
+          await supabase
+            .from("likes")
+            .update({ on: true })
+            .eq("post_id", postIdNum)
+            .eq("user_id", userId);
         } else {
-          await Promise.all([
-            supabase.from("likes").insert({
-              post_id: postIdNum,
-              user_id: userId,
-              created_at: new Date().toISOString(),
-              on: true,
-            }),
-            supabase
-              .from("todos")
-              .update({ likes: currentLikes + 1 })
-              .eq("id", postIdNum)
-          ]);
+          await supabase.from("likes").insert({
+            post_id: postIdNum,
+            user_id: userId,
+            created_at: new Date().toISOString(),
+            on: true,
+          });
         }
       }
     } catch (error) {

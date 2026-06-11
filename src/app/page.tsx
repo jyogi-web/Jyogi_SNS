@@ -8,8 +8,6 @@ import Post from "@/components/Post";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
 import { supabase } from "@/utils/supabase/client";
-import PWAInstaller from "@/components/PWAInstaller";
-import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { useAuth } from "@/contexts/AuthContext";
 // 🔧 共通型定義をインポート
 import { PostType, ReplyType, StanpType } from "@/types/post";
@@ -438,6 +436,8 @@ export default function Home() {
 
     const userId = user.id;
     const postIdNum = Number(postId);
+    const postOwnerId =
+      posts.find((post) => Number(post.id) === postIdNum)?.user_id ?? null;
 
     try {
       // 🚀 楽観的更新: UIを即座に更新
@@ -485,59 +485,32 @@ export default function Home() {
         return;
       }
 
-      // 現在のlikes取得
-      const { data: todoData } = await supabase
-        .from("todos")
-        .select("likes, user_id")
-        .eq("id", postIdNum)
-        .single();
-      const currentLikes = todoData?.likes ?? 0;
-      const postOwnerId = todoData?.user_id;
-
       if (likeData?.on) {
         // いいね解除
-        await Promise.all([
-          supabase
-            .from("likes")
-            .update({ on: false })
-            .eq("post_id", postIdNum)
-            .eq("user_id", userId),
-          supabase
-            .from("todos")
-            .update({ likes: Math.max(currentLikes - 1, 0) })
-            .eq("id", postIdNum)
-        ]);
+        await supabase
+          .from("likes")
+          .update({ on: false })
+          .eq("post_id", postIdNum)
+          .eq("user_id", userId);
       } else {
         // いいね処理
         const isNewLike = !likeData;
 
         if (likeData) {
           // 再いいね
-          await Promise.all([
-            supabase
-              .from("likes")
-              .update({ on: true })
-              .eq("post_id", postIdNum)
-              .eq("user_id", userId),
-            supabase
-              .from("todos")
-              .update({ likes: currentLikes + 1 })
-              .eq("id", postIdNum)
-          ]);
+          await supabase
+            .from("likes")
+            .update({ on: true })
+            .eq("post_id", postIdNum)
+            .eq("user_id", userId);
         } else {
           // 新規いいね
-          await Promise.all([
-            supabase.from("likes").insert({
-              post_id: postIdNum,
-              user_id: userId,
-              created_at: new Date().toISOString(),
-              on: true,
-            }),
-            supabase
-              .from("todos")
-              .update({ likes: currentLikes + 1 })
-              .eq("id", postIdNum)
-          ]);
+          await supabase.from("likes").insert({
+            post_id: postIdNum,
+            user_id: userId,
+            created_at: new Date().toISOString(),
+            on: true,
+          });
         }
 
         // いいね通知を送信（新規いいねの場合のみ）
@@ -656,18 +629,6 @@ export default function Home() {
     }
   };
 
-  // ローディング表示
-  if (loading && posts.length === 0) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>読み込み中...</p>
-        </div>
-      </div>
-    );
-  }
-
   // エラー表示
   if (error) {
     return (
@@ -687,8 +648,6 @@ export default function Home() {
 
   return (
     <>
-      <ServiceWorkerRegistration />
-      <PWAInstaller />
       <TutorialModal featureId="timeline" />
       <div className="min-h-screen bg-black text-white">
         <div className="max-w-7xl mx-auto flex lg:h-screen">
@@ -701,9 +660,9 @@ export default function Home() {
           <div className="flex-1 max-w-2xl mx-auto lg:border-r border-gray-800 relative z-10 pb-20 lg:pb-0 lg:overflow-y-auto">
             {/* ヘッダー */}
             <div className="sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 p-4 z-40">
-              {/* モバイル: タイトルと認証ボタン */}
-              <div className="lg:hidden flex items-center justify-between">
-                <h1 className="text-xl font-bold">ホーム</h1>
+              {/* タイトルと認証ボタン */}
+              <div className="flex items-center justify-between lg:justify-end">
+                <h1 className="text-xl font-bold lg:hidden">ホーム</h1>
                 {isClient && (
                   <div className="flex items-center space-x-2">
                     {user ? (
@@ -771,9 +730,6 @@ export default function Home() {
                 <div className="mt-2 bg-red-900/40 border border-red-700 text-red-200 text-sm p-3 rounded">
                   <p className="font-semibold mb-1">サインインエラー</p>
                   <pre className="whitespace-pre-wrap break-all text-xs leading-relaxed">{authError}</pre>
-                  <p className="mt-2">
-                    手順: 1) Supabase {'>'} Auth {'>'} Providers {'>'} Twitter のフィールド種別とキー再保存 2) X Developer Portal の User authentication settings を再保存 (Callback / Scope) 3) 再ログイン。
-                  </p>
                 </div>
               )}
             </div>
@@ -790,7 +746,28 @@ export default function Home() {
             
             {/* 投稿一覧表示 */}
             <div className="relative z-10">
-              {filteredPosts.length === 0 ? (
+              {loading && filteredPosts.length === 0 ? (
+                <div className="px-4 py-6 space-y-4">
+                  {[1, 2, 3].map((item) => (
+                    <div
+                      key={item}
+                      className="animate-pulse rounded-2xl border border-gray-800 bg-gray-900/40 p-4"
+                    >
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="h-10 w-10 rounded-full bg-gray-800" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3 w-32 rounded bg-gray-800" />
+                          <div className="h-2 w-20 rounded bg-gray-800/80" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="h-3 w-full rounded bg-gray-800" />
+                        <div className="h-3 w-5/6 rounded bg-gray-800" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : filteredPosts.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <p>まだ投稿がありません</p>
                 </div>

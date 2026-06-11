@@ -4,17 +4,13 @@ import { useState, useEffect,useRef } from "react";
 import {
   Search,
   TrendingUp,
-  Wine,
-  Users,
-  Radio,
   ExternalLink,
   Clock,
 } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import TutorialModal from "@/components/TutorialModal";
 import { supabase } from "@/utils/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSearchParams } from "next/navigation";
 import MobileNavigation from "@/components/MobileNavigation";
 import MobileExtendedNavigation from "@/components/MobileExtendedNavigation";
 
@@ -33,15 +29,6 @@ type Todo = {
   created_at: string;
 };
 
-// TikuriBarルーム情報の型
-type BarRoom = {
-  id: string;
-  title: string;
-  userCount: number;
-  createdAt: number;
-  hostName: string;
-};
-
 // ニュース記事の型
 type NewsArticle = {
   title: string;
@@ -53,9 +40,7 @@ type NewsArticle = {
 };
 
 export default function SearchPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("recommended");
   const [searchQuery, setSearchQuery] = useState("");
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -84,11 +69,6 @@ export default function SearchPage() {
       setActiveTab("search");
     }
   }, [searchParams]);
-
-  // TikuriBar関連の状態
-  const [tikuriBars, setTikuriBars] = useState<BarRoom[]>([]);
-  const [isLoadingBars, setIsLoadingBars] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
 
   // ニュース関連の状態（初期値にモックデータを設定）
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([
@@ -228,116 +208,6 @@ export default function SearchPage() {
     const newsInterval = setInterval(fetchNews, 30 * 60 * 1000);
 
     return () => clearInterval(newsInterval);
-  }, []);
-
-  // 既存のuseEffectはそのまま維持
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: NodeJS.Timeout | null = null;
-
-    const connectToTikuriBar = () => {
-      try {
-        ws = new WebSocket(
-          process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8080",
-        );
-
-        const connectionTimeout = setTimeout(() => {
-          if (ws && ws.readyState === WebSocket.CONNECTING) {
-            console.log("TikuriBar WebSocket接続タイムアウト");
-            ws.close();
-            setWsConnected(false);
-          }
-        }, 5000);
-
-        ws.onopen = () => {
-          console.log("TikuriBar WebSocket接続成功");
-          clearTimeout(connectionTimeout);
-          setWsConnected(true);
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            try {
-              ws.send(JSON.stringify({ type: "get_bars" }));
-            } catch (error) {
-              console.warn("TikuriBar ルーム一覧取得エラー:", error);
-            }
-          }
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === "bars_list") {
-              setTikuriBars(data.bars || []);
-            }
-          } catch (error) {
-            console.warn("TikuriBar メッセージ解析エラー:", error);
-          }
-        };
-
-        ws.onclose = (event) => {
-          clearTimeout(connectionTimeout);
-          console.log(
-            "TikuriBar WebSocket接続が切断されました:",
-            event.code,
-            event.reason,
-          );
-          setWsConnected(false);
-
-          if (event.code !== 1000 && event.code !== 1001) {
-            reconnectTimeout = setTimeout(() => {
-              console.log("TikuriBar WebSocket再接続を試行...");
-              connectToTikuriBar();
-            }, 5000);
-          }
-        };
-
-        ws.onerror = (error) => {
-          clearTimeout(connectionTimeout);
-          console.warn(
-            "TikuriBar WebSocket接続エラー - サーバーが利用できない可能性があります",
-          );
-          setWsConnected(false);
-
-          if (!reconnectTimeout) {
-            reconnectTimeout = setTimeout(() => {
-              console.log("TikuriBar WebSocket再接続を試行...");
-              connectToTikuriBar();
-            }, 10000);
-          }
-        };
-      } catch (error) {
-        console.warn("TikuriBar WebSocket作成エラー:", error);
-        setWsConnected(false);
-
-        if (!reconnectTimeout) {
-          reconnectTimeout = setTimeout(() => {
-            console.log("TikuriBar WebSocket再接続を試行...");
-            connectToTikuriBar();
-          }, 15000);
-        }
-      }
-    };
-
-    connectToTikuriBar();
-
-    const interval = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-          ws.send(JSON.stringify({ type: "get_bars" }));
-        } catch (error) {
-          console.warn("TikuriBar 定期更新エラー:", error);
-        }
-      }
-    }, 30000);
-
-    return () => {
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      if (ws) {
-        ws.close();
-      }
-      clearInterval(interval);
-    };
   }, []);
 
   // 既存のuseEffectはそのまま維持
@@ -520,25 +390,6 @@ const handleLoadMore = () => {
       ),
     );
   }, [userId, todos, userTags, userWords]);
-
-  // TikuriBarルーム参加処理
-  const handleJoinTikuriBar = (barId: string) => {
-    if (!user) {
-      alert("TikuriBarに参加するにはログインが必要です");
-      return;
-    }
-    router.push(`/tikuribar?join=${barId}`);
-  };
-
-  // 時間フォーマット関数
-  const formatDuration = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const hours = Math.floor(minutes / 60);
-    if (hours > 0) {
-      return `${hours}時間${minutes % 60}分`;
-    }
-    return `${minutes}分`;
-  };
 
   // ニュース記事の時間フォーマット関数
   const formatNewsTime = (publishedAt: string) => {
@@ -778,117 +629,6 @@ const handleLoadMore = () => {
         <div className="hidden xl:block w-80 flex-shrink-0 h-screen overflow-y-auto">
           {/* 右サイドバーのコンテンツ */}
           <div className="p-4 space-y-6">
-            {/* TikuriBAR Live Bloom */}
-            <div className="bg-gradient-to-br from-gray-900 via-black to-gray-800 rounded-2xl p-4 border border-amber-500/20 shadow-lg shadow-amber-500/10 relative overflow-hidden">
-              {/* 背景のグラデーション効果 */}
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5 opacity-50"></div>
-
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-amber-500/80 to-orange-500/80 rounded-lg flex items-center justify-center shadow-lg">
-                      <Wine size={16} className="text-white" />
-                    </div>
-                    <h2 className="text-xl font-bold text-white">
-                      TikuriBAR ライブブルーム
-                    </h2>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-red-500"}`}
-                    ></div>
-                    <span className="text-xs text-gray-300">
-                      {wsConnected ? "接続中" : "未接続"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {!wsConnected ? (
-                    <div className="text-center py-8 text-white">
-                      <Wine size={32} className="mx-auto mb-2 opacity-60" />
-                      <p className="text-sm">
-                        TikuriBARサーバーに接続できません
-                      </p>
-                      <p className="text-xs mt-1 text-gray-300">
-                        サーバーが起動していない可能性があります
-                      </p>
-                      <button
-                        onClick={() => router.push("/tikuribar")}
-                        className="mt-3 bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500/80 hover:to-orange-500/80 text-white px-4 py-2 rounded-lg transition-all duration-300 text-sm shadow-lg"
-                      >
-                        TikuriBARページへ
-                      </button>
-                    </div>
-                  ) : tikuriBars.length === 0 ? (
-                    <div className="text-center py-8 text-white">
-                      <Wine size={32} className="mx-auto mb-2 opacity-60" />
-                      <p className="text-sm">現在営業中のBARはありません</p>
-                      <p className="text-xs mt-1 text-gray-300">
-                        新しいBARを作成してみましょう！
-                      </p>
-                    </div>
-                  ) : (
-                    tikuriBars.map((bar) => (
-                      <div
-                        key={bar.id}
-                        onClick={() => handleJoinTikuriBar(bar.id)}
-                        className="group bg-gradient-to-br from-gray-800/40 via-black/60 to-gray-700/40 backdrop-blur-sm rounded-xl p-4 border border-amber-500/20 hover:border-amber-400/40 transition-all duration-300 transform hover:scale-105 cursor-pointer shadow-lg hover:shadow-amber-500/20 relative overflow-hidden"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-
-                        <div className="flex items-center space-x-3 relative z-10">
-                          <div className="flex-shrink-0">
-                            <div className="w-12 h-12 bg-gradient-to-br from-amber-500/80 to-orange-500/80 rounded-full flex items-center justify-center shadow-lg">
-                              <Radio size={20} className="text-white" />
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-white text-sm group-hover:text-amber-100 transition-colors duration-300 truncate">
-                              {bar.title}
-                            </div>
-                            <div className="flex items-center space-x-3 mt-1">
-                              <div className="flex items-center space-x-1">
-                                <Users size={12} className="text-amber-400" />
-                                <span className="text-xs text-amber-300">
-                                  {bar.userCount}人
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-1">
-                                <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
-                                <span className="text-xs text-red-400">
-                                  LIVE
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-xs text-gray-300 mt-1">
-                              {formatDuration(Date.now() - bar.createdAt)}
-                              前から営業中
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-
-                  <button
-                    onClick={() => router.push("/tikuribar")}
-                    className="w-full bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-500/80 hover:to-orange-500/80 text-white py-3 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-amber-500/25 flex items-center justify-center space-x-2 backdrop-blur-sm border border-amber-400/50 group relative overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                    <Wine
-                      size={18}
-                      className="group-hover:rotate-12 transition-transform duration-300 relative z-10"
-                    />
-                    <span className="font-semibold relative z-10">
-                      TikuriBARへ
-                    </span>
-                    <div className="w-2 h-2 bg-white/60 rounded-full relative z-10"></div>
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* 本日のニュース */}
             <div className="bg-gray-800 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-4">

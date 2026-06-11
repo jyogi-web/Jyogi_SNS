@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RotateCcw } from "lucide-react";
 import { TUTORIAL_FEATURES } from "./data";
 import { TutorialFeature } from "@/types/tutorial";
+import { useRouter } from "next/navigation";
 
 function FeatureCard({ feature }: { feature: TutorialFeature }) {
   return (
@@ -26,8 +27,19 @@ function FeatureCard({ feature }: { feature: TutorialFeature }) {
 }
 
 export default function TutorialPage() {
+  const router = useRouter();
   const basicFeatures = TUTORIAL_FEATURES.filter((f) => f.category === "basic");
   const otherFeatures = TUTORIAL_FEATURES.filter((f) => f.category === "feature");
+
+  const handleResetTutorials = () => {
+    if (process.env.NODE_ENV !== "development") return;
+
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("tutorial_modal_"))
+      .forEach((key) => localStorage.removeItem(key));
+
+    router.push("/");
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -45,6 +57,16 @@ export default function TutorialPage() {
             <p className="text-gray-400 text-sm">各機能の使い方を確認しよう</p>
           </div>
         </div>
+
+        {process.env.NODE_ENV === "development" && (
+          <button
+            onClick={handleResetTutorials}
+            className="mb-8 inline-flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-gray-200 hover:bg-gray-800 transition-colors"
+          >
+            <RotateCcw size={16} />
+            チュートリアルを再表示する
+          </button>
+        )}
 
         {/* 基本操作 */}
         <section className="mb-8">
