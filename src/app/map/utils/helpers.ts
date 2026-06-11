@@ -18,7 +18,7 @@ export function escapeHtml(str: string): string {
 }
 
 export async function compressAndUploadImage(file: File): Promise<string | null> {
-  const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
+  const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-8a72d0656f234f4f8b057562db9d565a.r2.dev").replace(/\/$/, "") + "/";
   const uniqueFileName = `spot_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
 
   return new Promise((resolve) => {
@@ -35,12 +35,13 @@ export async function compressAndUploadImage(file: File): Promise<string | null>
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
         const base64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
         try {
-          await fetch("/api/upload", {
+          const res = await fetch("/api/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ file: base64, fileName: uniqueFileName }),
           });
-          resolve(R2_PUBLIC_URL + uniqueFileName);
+          const result = await res.json().catch(() => ({}));
+          resolve(result.imageUrl || (R2_PUBLIC_URL + uniqueFileName));
         } catch {
           resolve(null);
         }

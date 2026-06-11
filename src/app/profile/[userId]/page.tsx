@@ -26,12 +26,14 @@ interface UserProfile {
   follower: number;
 }
 
+const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-8a72d0656f234f4f8b057562db9d565a.r2.dev").replace(/\/$/, "") + "/";
+
 function getPublicIconUrl(iconUrl?: string) {
   if (!iconUrl) return "";
   if (iconUrl.includes("cloudflarestorage.com")) {
     const filename = iconUrl.split("/").pop();
     if (!filename) return "";
-    return `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${filename}`;
+    return `${R2_PUBLIC_URL}${filename}`;
   }
   return iconUrl;
 }
@@ -42,7 +44,7 @@ function getPublicBannerUrl(bannerUrl?: string) {
   if (bannerUrl.includes("cloudflarestorage.com")) {
     const filename = bannerUrl.split("/").pop();
     if (!filename) return "";
-    return `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${filename}`;
+    return `${R2_PUBLIC_URL}${filename}`;
   }
   return bannerUrl;
 }

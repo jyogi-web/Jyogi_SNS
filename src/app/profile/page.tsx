@@ -164,7 +164,8 @@ type TimelinePost = {
   [key: string]: unknown;
 };
 
-const R2_PUBLIC_URL = "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
+// R2のパブリックURL（環境変数から取得、フォールバックとして新しいデフォルトを使用）
+const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-8a72d0656f234f4f8b057562db9d565a.r2.dev").replace(/\/$/, "") + "/";
 
 function ProfilePageContent() {
   const { user } = useAuth();

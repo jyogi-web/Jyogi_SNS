@@ -31,8 +31,8 @@ export default function PostForm({
     introduction?: string;
   } | null>(null);
 
-  // R2のパブリック開発URL
-  const R2_PUBLIC_URL = r2PublicUrl || "https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/";
+  // R2のパブリックURL（環境変数から取得、フォールバックとして新しいデフォルトを使用）
+  const R2_PUBLIC_URL = (r2PublicUrl || process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-8a72d0656f234f4f8b057562db9d565a.r2.dev").replace(/\/$/, "") + "/";
 
   // R2画像URL変換関数
   function getPublicIconUrl(iconUrl?: string) {
@@ -122,7 +122,8 @@ export default function PostForm({
               fileName: uniqueFileName,
             }),
           });
-          resolve(r2PublicUrl + uniqueFileName);
+          const result = await res.json().catch(() => ({}));
+          resolve(result.imageUrl || (R2_PUBLIC_URL + uniqueFileName));
         };
         img.src = reader.result as string;
       };

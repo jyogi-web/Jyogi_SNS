@@ -28,7 +28,8 @@ export default function BookmarksPage() {
     if (iconUrl.includes("cloudflarestorage.com")) {
       const filename = iconUrl.split("/").pop();
       if (!filename) return "";
-      return `https://pub-1d11d6a89cf341e7966602ec50afd166.r2.dev/${filename}`;
+      const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-8a72d0656f234f4f8b057562db9d565a.r2.dev").replace(/\/$/, "") + "/";
+      return `${R2_PUBLIC_URL}${filename}`;
     }
     return iconUrl;
   };
