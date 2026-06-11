@@ -13,40 +13,71 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
-CREATE SCHEMA IF NOT EXISTS "public";
-
-
-ALTER SCHEMA "public" OWNER TO "pg_database_owner";
-
-
 COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
 
-CREATE OR REPLACE FUNCTION "public"."TTL deleat"() RETURNS "void"
-    LANGUAGE "plpgsql"
-    AS $$BEGIN
-  DELETE FROM public.todos WHERE created_at <= (CURRENT_TIMESTAMP - INTERVAL '1 day');
-  RETURN;
-END;$$;
+CREATE EXTENSION IF NOT EXISTS "pgroonga" WITH SCHEMA "public";
 
 
-ALTER FUNCTION "public"."TTL deleat"() OWNER TO "postgres";
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
+
+
+
+
 
 
 CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-  INSERT INTO public.usels (user_id, username, introduction, place, birth_date, follow)
+  INSERT INTO public.usels (user_id, username, "displayName", introduction, place, birth_date, follow)
   VALUES (
     new.id,
     COALESCE(new.raw_user_meta_data->>'username', 'user_' || substr(new.id::text, 1, 8)),
-    COALESCE('こんにちは、' || (new.raw_user_meta_data->>'displayName') || 'です！', 'よろしくお願いします'),
+    COALESCE(
+      new.raw_user_meta_data->>'displayName',
+      new.raw_user_meta_data->>'username',
+      'ユーザー'
+    ),
+    'よろしくお願いします',
     '',
     NULL,
     0
-  );
+  )
+  ON CONFLICT (user_id) DO NOTHING;
   RETURN new;
 END;
 $$;
@@ -63,23 +94,14 @@ CREATE OR REPLACE FUNCTION "public"."search_todos_pgroonga"("p_q" "text" DEFAULT
     t.title,
     t.tags,
     t.likes::integer,
-    t.user_id,
+    t.user_id::text,
     t.created_at
   FROM public.todos AS t
   WHERE
-    (
-      -- p_q が空でない場合、title か tags のどちらかにマッチするか判定
-      COALESCE(p_q, '') = ''
-      OR t.title &@~ p_q
-      OR t.tags &@~ p_q
-    )
-    AND (
-      -- p_tag が指定されている場合、tags 配列内を検索
-      COALESCE(p_tag, '') = ''
-      OR t.tags &@~ p_tag
-    )
+    (COALESCE(p_q, '') = '' OR t.title &@~ p_q OR t.tags &@~ p_q)
+    AND (COALESCE(p_tag, '') = '' OR t.tags &@~ p_tag)
   ORDER BY t.created_at DESC
-  LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 201)
+  LIMIT  LEAST(GREATEST(COALESCE(p_limit, 50), 1), 201)
   OFFSET GREATEST(COALESCE(p_offset, 0), 0);
 $$;
 
@@ -95,8 +117,8 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     IF NEW.on IS TRUE AND NEW.post_id IS NOT NULL THEN
       UPDATE public.todos
-      SET likes = LEAST(COALESCE(likes, 0) + 1, 32767)
-      WHERE id = NEW.post_id;
+        SET likes = LEAST(COALESCE(likes, 0) + 1, 32767)
+        WHERE id = NEW.post_id;
     END IF;
     RETURN NEW;
   END IF;
@@ -104,38 +126,25 @@ BEGIN
   IF TG_OP = 'UPDATE' THEN
     IF COALESCE(OLD.post_id, -1) <> COALESCE(NEW.post_id, -1) THEN
       IF OLD.on IS TRUE AND OLD.post_id IS NOT NULL THEN
-        UPDATE public.todos
-        SET likes = GREATEST(COALESCE(likes, 0) - 1, 0)
-        WHERE id = OLD.post_id;
+        UPDATE public.todos SET likes = GREATEST(COALESCE(likes, 0) - 1, 0) WHERE id = OLD.post_id;
       END IF;
-
       IF NEW.on IS TRUE AND NEW.post_id IS NOT NULL THEN
-        UPDATE public.todos
-        SET likes = LEAST(COALESCE(likes, 0) + 1, 32767)
-        WHERE id = NEW.post_id;
+        UPDATE public.todos SET likes = LEAST(COALESCE(likes, 0) + 1, 32767) WHERE id = NEW.post_id;
       END IF;
-
       RETURN NEW;
     END IF;
 
     IF COALESCE(OLD.on, false) = false AND COALESCE(NEW.on, false) = true THEN
-      UPDATE public.todos
-      SET likes = LEAST(COALESCE(likes, 0) + 1, 32767)
-      WHERE id = NEW.post_id;
+      UPDATE public.todos SET likes = LEAST(COALESCE(likes, 0) + 1, 32767) WHERE id = NEW.post_id;
     ELSIF COALESCE(OLD.on, false) = true AND COALESCE(NEW.on, false) = false THEN
-      UPDATE public.todos
-      SET likes = GREATEST(COALESCE(likes, 0) - 1, 0)
-      WHERE id = NEW.post_id;
+      UPDATE public.todos SET likes = GREATEST(COALESCE(likes, 0) - 1, 0) WHERE id = OLD.post_id;
     END IF;
-
     RETURN NEW;
   END IF;
 
   IF TG_OP = 'DELETE' THEN
     IF OLD.on IS TRUE AND OLD.post_id IS NOT NULL THEN
-      UPDATE public.todos
-      SET likes = GREATEST(COALESCE(likes, 0) - 1, 0)
-      WHERE id = OLD.post_id;
+      UPDATE public.todos SET likes = GREATEST(COALESCE(likes, 0) - 1, 0) WHERE id = OLD.post_id;
     END IF;
     RETURN OLD;
   END IF;
@@ -154,9 +163,9 @@ SET default_table_access_method = "heap";
 
 CREATE TABLE IF NOT EXISTS "public"."bookmarks" (
     "id" bigint NOT NULL,
-    "created_at" timestamp without time zone NOT NULL,
+    "created_at" timestamp without time zone DEFAULT "now"() NOT NULL,
     "post_id" integer,
-    "user_id" "uuid" DEFAULT "gen_random_uuid"(),
+    "user_id" "uuid",
     "on" boolean
 );
 
@@ -197,32 +206,12 @@ ALTER TABLE "public"."follows" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDE
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."infrastructure_logs" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "run_id" "uuid" NOT NULL,
-    "environment" "text" NOT NULL,
-    "source" "text" NOT NULL,
-    "log_level" "text" NOT NULL,
-    "event_type" "text" NOT NULL,
-    "message" "text" NOT NULL,
-    "detail" "jsonb",
-    "resolved" boolean DEFAULT false,
-    CONSTRAINT "infrastructure_logs_environment_check" CHECK (("environment" = ANY (ARRAY['prod'::"text", 'staging'::"text", 'dev'::"text"]))),
-    CONSTRAINT "infrastructure_logs_log_level_check" CHECK (("log_level" = ANY (ARRAY['info'::"text", 'warn'::"text", 'error'::"text"]))),
-    CONSTRAINT "infrastructure_logs_source_check" CHECK (("source" = ANY (ARRAY['raspberry_pi'::"text", 'supabase'::"text", 'r2'::"text", 'vercel'::"text"])))
-);
-
-
-ALTER TABLE "public"."infrastructure_logs" OWNER TO "postgres";
-
-
 CREATE TABLE IF NOT EXISTS "public"."likes" (
-    "created_at" timestamp without time zone NOT NULL,
-    "user_id" "uuid" DEFAULT "gen_random_uuid"(),
+    "id" integer NOT NULL,
+    "created_at" timestamp without time zone DEFAULT "now"() NOT NULL,
+    "user_id" "uuid",
     "post_id" integer,
-    "on" boolean,
-    "id" integer NOT NULL
+    "on" boolean
 );
 
 
@@ -262,13 +251,13 @@ ALTER TABLE "public"."make_stamp" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS 
 
 
 CREATE TABLE IF NOT EXISTS "public"."messages" (
-    "receiver_id" "uuid",
+    "id" bigint NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
+    "receiver_id" "uuid",
+    "sender_id" "uuid",
     "message" json,
     "username" "text",
-    "sender_id" "uuid",
-    "text" "text",
-    "id" bigint NOT NULL
+    "text" "text"
 );
 
 
@@ -409,36 +398,12 @@ ALTER TABLE "public"."stamp" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENT
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."text_" (
-    "id" bigint NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "text" json
-);
-
-
-ALTER TABLE "public"."text_" OWNER TO "postgres";
-
-
-ALTER TABLE "public"."text_" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME "public"."text__id_seq"
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
-
 CREATE TABLE IF NOT EXISTS "public"."todos" (
     "id" integer NOT NULL,
     "title" "text",
-    "end_date" "date",
-    "test" smallint,
     "likes" smallint,
     "tags" "text"[],
-    "bookmarked" boolean,
-    "user_id" "text",
+    "user_id" "uuid",
     "created_at" timestamp with time zone,
     "replies" smallint,
     "image_url" "text"
@@ -448,19 +413,14 @@ CREATE TABLE IF NOT EXISTS "public"."todos" (
 ALTER TABLE "public"."todos" OWNER TO "postgres";
 
 
-CREATE SEQUENCE IF NOT EXISTS "public"."todos_id_seq"
-    AS integer
+ALTER TABLE "public"."todos" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."todos_id_seq"
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
     NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE "public"."todos_id_seq" OWNER TO "postgres";
-
-
-ALTER SEQUENCE "public"."todos_id_seq" OWNED BY "public"."todos"."id";
+    CACHE 1
+);
 
 
 
@@ -468,14 +428,15 @@ CREATE TABLE IF NOT EXISTS "public"."usels" (
     "id" bigint NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "username" "text" DEFAULT 'わしじゃよ'::"text",
+    "displayName" "text",
     "introduction" "text" DEFAULT 'よろしくお願いします'::"text",
     "place" "text",
     "birth_date" "date",
-    "follow" smallint DEFAULT '0'::smallint,
+    "follow" smallint DEFAULT 0,
     "site" "text",
     "user_id" "uuid",
     "setID" "text",
-    "follower" smallint DEFAULT '0'::smallint,
+    "follower" smallint DEFAULT 0,
     "icon_url" "text",
     "has_posted" boolean,
     "isBunkatsu" boolean,
@@ -484,6 +445,10 @@ CREATE TABLE IF NOT EXISTS "public"."usels" (
 
 
 ALTER TABLE "public"."usels" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."usels"."displayName" IS '表示名（auth.users の raw_user_meta_data->displayName と同期）';
+
 
 
 COMMENT ON COLUMN "public"."usels"."isBunkatsu" IS '分割機能オンオフ';
@@ -516,10 +481,6 @@ CREATE OR REPLACE VIEW "public"."users" AS
 ALTER VIEW "public"."users" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "public"."todos" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."todos_id_seq"'::"regclass");
-
-
-
 ALTER TABLE ONLY "public"."bookmarks"
     ADD CONSTRAINT "bookmarks_pkey" PRIMARY KEY ("id");
 
@@ -527,11 +488,6 @@ ALTER TABLE ONLY "public"."bookmarks"
 
 ALTER TABLE ONLY "public"."follows"
     ADD CONSTRAINT "follows_pkey" PRIMARY KEY ("id");
-
-
-
-ALTER TABLE ONLY "public"."infrastructure_logs"
-    ADD CONSTRAINT "infrastructure_logs_pkey" PRIMARY KEY ("id");
 
 
 
@@ -590,11 +546,6 @@ ALTER TABLE ONLY "public"."stamp"
 
 
 
-ALTER TABLE ONLY "public"."text_"
-    ADD CONSTRAINT "text__pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."todos"
     ADD CONSTRAINT "todos_pkey" PRIMARY KEY ("id");
 
@@ -607,6 +558,11 @@ ALTER TABLE ONLY "public"."likes"
 
 ALTER TABLE ONLY "public"."usels"
     ADD CONSTRAINT "usels_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."usels"
+    ADD CONSTRAINT "usels_user_id_key" UNIQUE ("user_id");
 
 
 
@@ -630,19 +586,27 @@ CREATE INDEX "idx_push_subscriptions_user_id" ON "public"."push_subscriptions" U
 
 
 
-CREATE INDEX "infrastructure_logs_created_at_idx" ON "public"."infrastructure_logs" USING "btree" ("created_at" DESC);
+CREATE INDEX "make_stamp_created_at_idx" ON "public"."make_stamp" USING "btree" ("created_at" DESC);
 
 
 
-CREATE INDEX "infrastructure_logs_error_level_idx" ON "public"."infrastructure_logs" USING "btree" ("log_level") WHERE ("log_level" = 'error'::"text");
+CREATE INDEX "messages_created_at_idx" ON "public"."messages" USING "btree" ("created_at");
 
 
 
-CREATE INDEX "infrastructure_logs_run_id_idx" ON "public"."infrastructure_logs" USING "btree" ("run_id");
+CREATE INDEX "messages_sender_receiver_idx" ON "public"."messages" USING "btree" ("sender_id", "receiver_id");
+
+
+
+CREATE INDEX "replies_post_id_idx" ON "public"."replies" USING "btree" ("post_id");
 
 
 
 CREATE INDEX "spot_posts_created_at_idx" ON "public"."spot_posts" USING "btree" ("created_at" DESC);
+
+
+
+CREATE INDEX "todos_created_at_idx" ON "public"."todos" USING "btree" ("created_at" DESC);
 
 
 
@@ -651,6 +615,10 @@ CREATE INDEX "todos_tags_pgroonga_idx" ON "public"."todos" USING "pgroonga" ("ta
 
 
 CREATE INDEX "todos_title_pgroonga_idx" ON "public"."todos" USING "pgroonga" ("title");
+
+
+
+CREATE INDEX "todos_user_id_idx" ON "public"."todos" USING "btree" ("user_id");
 
 
 
@@ -714,17 +682,6 @@ CREATE POLICY "follows_insert_own" ON "public"."follows" FOR INSERT TO "authenti
 
 
 CREATE POLICY "follows_select_public" ON "public"."follows" FOR SELECT USING (true);
-
-
-
-ALTER TABLE "public"."infrastructure_logs" ENABLE ROW LEVEL SECURITY;
-
-
-CREATE POLICY "infrastructure_logs_backup_readonly_select" ON "public"."infrastructure_logs" FOR SELECT TO "backup_readonly" USING (true);
-
-
-
-CREATE POLICY "infrastructure_logs_service_role_all" ON "public"."infrastructure_logs" TO "service_role" USING (true) WITH CHECK (true);
 
 
 
@@ -906,17 +863,14 @@ CREATE POLICY "stamp_select_public" ON "public"."stamp" FOR SELECT USING (true);
 
 
 
-ALTER TABLE "public"."text_" ENABLE ROW LEVEL SECURITY;
-
-
 ALTER TABLE "public"."todos" ENABLE ROW LEVEL SECURITY;
 
 
-CREATE POLICY "todos_delete_own" ON "public"."todos" FOR DELETE TO "authenticated" USING ((("auth"."uid"())::"text" = "user_id"));
+CREATE POLICY "todos_delete_own" ON "public"."todos" FOR DELETE TO "authenticated" USING (("auth"."uid"() = "user_id"));
 
 
 
-CREATE POLICY "todos_insert_own" ON "public"."todos" FOR INSERT TO "authenticated" WITH CHECK ((("auth"."uid"())::"text" = "user_id"));
+CREATE POLICY "todos_insert_own" ON "public"."todos" FOR INSERT TO "authenticated" WITH CHECK (("auth"."uid"() = "user_id"));
 
 
 
@@ -924,7 +878,7 @@ CREATE POLICY "todos_select_public" ON "public"."todos" FOR SELECT USING (true);
 
 
 
-CREATE POLICY "todos_update_own" ON "public"."todos" FOR UPDATE TO "authenticated" USING ((("auth"."uid"())::"text" = "user_id")) WITH CHECK ((("auth"."uid"())::"text" = "user_id"));
+CREATE POLICY "todos_update_own" ON "public"."todos" FOR UPDATE TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
 
 
 
@@ -947,159 +901,2210 @@ CREATE POLICY "usels_update_own" ON "public"."usels" FOR UPDATE TO "authenticate
 
 
 
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."likes";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."messages";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."notifications";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."replies";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."spot_posts";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."stamp";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."todos";
+
+
+
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
-GRANT USAGE ON SCHEMA "public" TO "backup_readonly";
-GRANT USAGE ON SCHEMA "public" TO "backup_cleanup";
 
 
 
-GRANT ALL ON FUNCTION "public"."TTL deleat"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_in"("cstring", "oid", integer) TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_out"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_send"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_in"("cstring", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_out"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_send"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_in"("cstring", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_out"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_recv"("internal", "oid", integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_send"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_typmod_in"("cstring"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(real[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(double precision[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(integer[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_halfvec"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_sparsevec"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."array_to_vector"(numeric[], integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_float4"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_sparsevec"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_to_vector"("public"."halfvec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_halfvec"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_to_vector"("public"."sparsevec", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_float4"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_halfvec"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_to_sparsevec"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cosine_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_accum"(double precision[], "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_add"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_avg"(double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_cmp"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_combine"(double precision[], double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_concat"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_eq"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_ge"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_gt"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_l2_squared_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_le"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_lt"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_mul"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_ne"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_negative_inner_product"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_spherical_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."halfvec_sub"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "postgres";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "anon";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hamming_distance"(bit, bit) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_bit_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_halfvec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnsw_sparsevec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."inner_product"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflat_bit_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflat_halfvec_support"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."ivfflathandler"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "postgres";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "anon";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."jaccard_distance"(bit, bit) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l1_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."halfvec", "public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_norm"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text", "arguments" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text", "arguments" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text", "arguments" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_command"("groongacommand" "text", "arguments" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_command_escape_value"("value" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_command_escape_value"("value" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_command_escape_value"("value" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_command_escape_value"("value" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_condition"("query" "text", "weights" integer[], "scorers" "text"[], "schema_name" "text", "index_name" "text", "column_name" "text", "fuzzy_max_distance_ratio" real) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_condition"("query" "text", "weights" integer[], "scorers" "text"[], "schema_name" "text", "index_name" "text", "column_name" "text", "fuzzy_max_distance_ratio" real) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_condition"("query" "text", "weights" integer[], "scorers" "text"[], "schema_name" "text", "index_name" "text", "column_name" "text", "fuzzy_max_distance_ratio" real) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_condition"("query" "text", "weights" integer[], "scorers" "text"[], "schema_name" "text", "index_name" "text", "column_name" "text", "fuzzy_max_distance_ratio" real) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_contain_varchar_array"(character varying[], character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_contain_varchar_array"(character varying[], character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_contain_varchar_array"(character varying[], character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_contain_varchar_array"(character varying[], character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array"("targets" "text"[], "query" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array"("targets" "text"[], "query" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array"("targets" "text"[], "query" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array"("targets" "text"[], "query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array"("targets" character varying[], "query" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array"("targets" character varying[], "query" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array"("targets" character varying[], "query" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array"("targets" character varying[], "query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_query_varchar_array_condition"("targets" character varying[], "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text"("target" "text", "other" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text"("target" "text", "other" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text"("target" "text", "other" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text"("target" "text", "other" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar"("target" character varying, "other" character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar"("target" character varying, "other" character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar"("target" character varying, "other" character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar"("target" character varying, "other" character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_equal_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" real) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" real) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" real) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" real) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" double precision) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" double precision) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" double precision) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" double precision) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" smallint) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" smallint) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" smallint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" smallint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" bigint) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp without time zone) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp without time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp without time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp without time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp with time zone) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text", "special_characters" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text", "special_characters" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text", "special_characters" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_escape"("value" "text", "special_characters" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_flush"("indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_flush"("indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_flush"("indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_flush"("indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_handler"("internal") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_handler"("internal") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_handler"("internal") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_handler"("internal") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[], "indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[], "indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[], "indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("targets" "text"[], "keywords" "text"[], "indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_highlight_html"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnindex" integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnindex" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnindex" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnindex" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnname" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnname" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnname" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_index_column_name"("indexname" "cstring", "columnname" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_is_writable"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_is_writable"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_is_writable"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_is_writable"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_list_broken_indexes"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_broken_indexes"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_broken_indexes"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_broken_indexes"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_list_lagged_indexes"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_lagged_indexes"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_lagged_indexes"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_list_lagged_indexes"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text_array"("text"[], "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text_array"("text"[], "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text_array"("text"[], "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_text_array"("text"[], "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_varchar"(character varying, character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_varchar"(character varying, character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_varchar"(character varying, character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_in_varchar"(character varying, character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_jsonb"("jsonb", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_jsonb"("jsonb", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_jsonb"("jsonb", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_jsonb"("jsonb", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_byte"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_positions_character"("target" "text", "keywords" "text"[], "indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_query"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_regexp"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_script_jsonb"("jsonb", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_script_jsonb"("jsonb", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_script_jsonb"("jsonb", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_script_jsonb"("jsonb", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text"[], "term" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text"[], "term" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text"[], "term" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text"[], "term" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying[], "term" character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying[], "term" character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying[], "term" character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying[], "term" character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text", "term" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text", "term" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text", "term" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" "text", "term" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying, "term" character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying, "term" character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying, "term" character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_term"("target" character varying, "term" character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition_with_scorers"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition_with_scorers"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition_with_scorers"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_array_condition_with_scorers"("target" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_match_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text", "normalizername" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text", "normalizername" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text", "normalizername" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_normalize"("target" "text", "normalizername" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_not_prefix_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_not_prefix_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_not_prefix_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_not_prefix_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text_array"("text"[], "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text_array"("text"[], "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text_array"("text"[], "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_text_array"("text"[], "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar"(character varying, character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar"(character varying, character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar"(character varying, character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar"(character varying, character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar_array"(character varying[], character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar_array"(character varying[], character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar_array"(character varying[], character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_in_varchar_array"(character varying[], character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text_array"("text"[], "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text_array"("text"[], "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text_array"("text"[], "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_text_array"("text"[], "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar"(character varying, character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar"(character varying, character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar"(character varying, character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar"(character varying, character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar_array"(character varying[], character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar_array"(character varying[], character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar_array"(character varying[], character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_in_varchar_array"(character varying[], character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar_array"(character varying[], character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar_array"(character varying[], character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar_array"(character varying[], character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_rk_varchar_array"(character varying[], character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array_condition"("text"[], "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array_condition"("text"[], "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array_condition"("text"[], "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_array_condition"("text"[], "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_text_condition"("text", "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array"(character varying[], character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array"(character varying[], character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array"(character varying[], character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array"(character varying[], character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array_condition"(character varying[], "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array_condition"(character varying[], "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array_condition"(character varying[], "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_array_condition"(character varying[], "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_prefix_varchar_condition"("target" character varying, "conditoin" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_escape"("query" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_escape"("query" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_escape"("query" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_escape"("query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_expand"("tablename" "cstring", "termcolumnname" "text", "synonymscolumnname" "text", "query" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_expand"("tablename" "cstring", "termcolumnname" "text", "synonymscolumnname" "text", "query" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_expand"("tablename" "cstring", "termcolumnname" "text", "synonymscolumnname" "text", "query" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_expand"("tablename" "cstring", "termcolumnname" "text", "synonymscolumnname" "text", "query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_extract_keywords"("query" "text", "index_name" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_extract_keywords"("query" "text", "index_name" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_extract_keywords"("query" "text", "index_name" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_extract_keywords"("query" "text", "index_name" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text_array"("text"[], "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text_array"("text"[], "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text_array"("text"[], "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_text_array"("text"[], "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_varchar"(character varying, character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_varchar"(character varying, character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_varchar"(character varying, character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_in_varchar"(character varying, character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_jsonb"("jsonb", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_jsonb"("jsonb", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_jsonb"("jsonb", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_jsonb"("jsonb", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition_with_scorers"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition_with_scorers"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition_with_scorers"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_array_condition_with_scorers"("targets" "text"[], "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition"("target" "text", "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_text_condition_with_scorers"("target" "text", "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_query_varchar_condition_with_scorers"("target" character varying, "condition" "public"."pgroonga_full_text_search_condition_with_scorers") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_text"("text", "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_text"("text", "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_text"("text", "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_text"("text", "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_varchar"(character varying, character varying[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_varchar"(character varying, character varying[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_varchar"(character varying, character varying[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_in_varchar"(character varying, character varying[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array"("targets" "text"[], "pattern" "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array"("targets" "text"[], "pattern" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array"("targets" "text"[], "pattern" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array"("targets" "text"[], "pattern" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array_condition"("targets" "text"[], "pattern" "public"."pgroonga_condition") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array_condition"("targets" "text"[], "pattern" "public"."pgroonga_condition") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array_condition"("targets" "text"[], "pattern" "public"."pgroonga_condition") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_text_array_condition"("targets" "text"[], "pattern" "public"."pgroonga_condition") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_regexp_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_jsonb_objects"("result" "jsonb") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_jsonb_objects"("result" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_jsonb_objects"("result" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_jsonb_objects"("result" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_recordset"("result" "jsonb") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_recordset"("result" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_recordset"("result" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_result_to_recordset"("result" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("row" "record") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("row" "record") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("row" "record") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("row" "record") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("tableoid" "oid", "ctid" "tid") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("tableoid" "oid", "ctid" "tid") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("tableoid" "oid", "ctid" "tid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_score"("tableoid" "oid", "ctid" "tid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_script_jsonb"("jsonb", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_jsonb"("jsonb", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_jsonb"("jsonb", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_jsonb"("jsonb", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_script_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_script_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_set_writable"("newwritable" boolean) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_set_writable"("newwritable" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_set_writable"("newwritable" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_set_writable"("newwritable" boolean) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text"("text", "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text"("text", "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text"("text", "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text"("text", "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text_array"("text"[], "text") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text_array"("text"[], "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text_array"("text"[], "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_text_array"("text"[], "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_varchar"(character varying, character varying) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_varchar"(character varying, character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_varchar"(character varying, character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_similar_varchar"(character varying, character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_snippet_html"("target" "text", "keywords" "text"[], "width" integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_snippet_html"("target" "text", "keywords" "text"[], "width" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_snippet_html"("target" "text", "keywords" "text"[], "width" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_snippet_html"("target" "text", "keywords" "text"[], "width" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_table_name"("indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_table_name"("indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_table_name"("indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_table_name"("indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_tokenize"("target" "text", VARIADIC "options" "text"[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_tokenize"("target" "text", VARIADIC "options" "text"[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_tokenize"("target" "text", VARIADIC "options" "text"[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_tokenize"("target" "text", VARIADIC "options" "text"[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_vacuum"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_vacuum"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_vacuum"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_vacuum"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"("indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"("indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"("indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_apply"("indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("block" bigint, "offset" bigint) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("block" bigint, "offset" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("block" bigint, "offset" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("block" bigint, "offset" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring", "block" bigint, "offset" bigint) TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring", "block" bigint, "offset" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring", "block" bigint, "offset" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_set_applied_position"("indexname" "cstring", "block" bigint, "offset" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_status"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_status"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_status"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_status"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"() TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"("indexname" "cstring") TO "postgres";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"("indexname" "cstring") TO "anon";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"("indexname" "cstring") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."pgroonga_wal_truncate"("indexname" "cstring") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."search_todos_pgroonga"("p_q" "text", "p_tag" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_cmp"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_eq"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_ge"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_gt"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_l2_squared_distance"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_le"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_lt"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_ne"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sparsevec_negative_inner_product"("public"."sparsevec", "public"."sparsevec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."halfvec", integer, integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "postgres";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "anon";
+GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."sync_todo_likes_count"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_accum"(double precision[], "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_add"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_avg"(double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_cmp"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_combine"(double precision[], double precision[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_concat"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_dims"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_eq"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_ge"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_gt"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_l2_squared_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_le"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_lt"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_mul"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_ne"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_negative_inner_product"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_norm"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_spherical_distance"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."vector_sub"("public"."vector", "public"."vector") TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."avg"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."avg"("public"."vector") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "anon";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sum"("public"."halfvec") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "postgres";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "anon";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sum"("public"."vector") TO "service_role";
+
+
+
+
+
+
+
+
+
+GRANT ALL ON TABLE "public"."bookmarks" TO "anon";
+GRANT ALL ON TABLE "public"."bookmarks" TO "authenticated";
 GRANT ALL ON TABLE "public"."bookmarks" TO "service_role";
-GRANT SELECT ON TABLE "public"."bookmarks" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."bookmarks_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."follows" TO "anon";
+GRANT ALL ON TABLE "public"."follows" TO "authenticated";
 GRANT ALL ON TABLE "public"."follows" TO "service_role";
-GRANT SELECT ON TABLE "public"."follows" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."follows_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."infrastructure_logs" TO "service_role";
-GRANT SELECT ON TABLE "public"."infrastructure_logs" TO "backup_readonly";
-
-
-
+GRANT ALL ON TABLE "public"."likes" TO "anon";
+GRANT ALL ON TABLE "public"."likes" TO "authenticated";
 GRANT ALL ON TABLE "public"."likes" TO "service_role";
-GRANT SELECT ON TABLE "public"."likes" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."likes_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."make_stamp" TO "anon";
+GRANT ALL ON TABLE "public"."make_stamp" TO "authenticated";
 GRANT ALL ON TABLE "public"."make_stamp" TO "service_role";
-GRANT SELECT ON TABLE "public"."make_stamp" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."make_stamp_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."messages" TO "anon";
+GRANT ALL ON TABLE "public"."messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."messages" TO "service_role";
-GRANT SELECT ON TABLE "public"."messages" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."messages_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."notification_settings" TO "anon";
+GRANT ALL ON TABLE "public"."notification_settings" TO "authenticated";
 GRANT ALL ON TABLE "public"."notification_settings" TO "service_role";
-GRANT SELECT ON TABLE "public"."notification_settings" TO "backup_readonly";
 
 
 
+GRANT ALL ON TABLE "public"."notifications" TO "anon";
+GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
 GRANT ALL ON TABLE "public"."notifications" TO "service_role";
-GRANT SELECT ON TABLE "public"."notifications" TO "backup_readonly";
 
 
 
+GRANT ALL ON TABLE "public"."push_subscriptions" TO "anon";
+GRANT ALL ON TABLE "public"."push_subscriptions" TO "authenticated";
 GRANT ALL ON TABLE "public"."push_subscriptions" TO "service_role";
-GRANT SELECT ON TABLE "public"."push_subscriptions" TO "backup_readonly";
 
 
 
+GRANT ALL ON TABLE "public"."realction" TO "anon";
+GRANT ALL ON TABLE "public"."realction" TO "authenticated";
 GRANT ALL ON TABLE "public"."realction" TO "service_role";
-GRANT SELECT ON TABLE "public"."realction" TO "backup_readonly";
 
 
 
+GRANT ALL ON TABLE "public"."replies" TO "anon";
+GRANT ALL ON TABLE "public"."replies" TO "authenticated";
 GRANT ALL ON TABLE "public"."replies" TO "service_role";
-GRANT SELECT ON TABLE "public"."replies" TO "backup_readonly";
-GRANT SELECT,DELETE ON TABLE "public"."replies" TO "backup_cleanup";
 
 
 
+GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."replies_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."spot_posts" TO "anon";
+GRANT ALL ON TABLE "public"."spot_posts" TO "authenticated";
 GRANT ALL ON TABLE "public"."spot_posts" TO "service_role";
-GRANT SELECT ON TABLE "public"."spot_posts" TO "backup_readonly";
 
 
 
+GRANT ALL ON TABLE "public"."stamp" TO "anon";
+GRANT ALL ON TABLE "public"."stamp" TO "authenticated";
 GRANT ALL ON TABLE "public"."stamp" TO "service_role";
-GRANT SELECT ON TABLE "public"."stamp" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."stamp_id_seq" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."text_" TO "service_role";
-GRANT SELECT ON TABLE "public"."text_" TO "backup_readonly";
-
-
-
-GRANT ALL ON SEQUENCE "public"."text__id_seq" TO "service_role";
-
-
-
+GRANT ALL ON TABLE "public"."todos" TO "anon";
+GRANT ALL ON TABLE "public"."todos" TO "authenticated";
 GRANT ALL ON TABLE "public"."todos" TO "service_role";
-GRANT SELECT ON TABLE "public"."todos" TO "backup_readonly";
-GRANT SELECT,DELETE ON TABLE "public"."todos" TO "backup_cleanup";
 
 
 
+GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."todos_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."usels" TO "anon";
+GRANT ALL ON TABLE "public"."usels" TO "authenticated";
 GRANT ALL ON TABLE "public"."usels" TO "service_role";
-GRANT SELECT ON TABLE "public"."usels" TO "backup_readonly";
 
 
 
+GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."usels_id_seq" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."users" TO "anon";
+GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
-GRANT SELECT ON TABLE "public"."users" TO "backup_readonly";
+
+
+
+
+
+
 
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
 
 
@@ -1108,6 +3113,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQ
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
 
 
@@ -1116,8 +3123,33 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUN
 
 
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT SELECT ON TABLES TO "backup_readonly";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

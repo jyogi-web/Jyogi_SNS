@@ -702,7 +702,7 @@ function ProfilePageContent() {
         } else if (userData) {
           setFormData({
             setID: userData.setID || userData.username || "user",
-            displayName: userData.username || userData.display_name || "ユーザー",
+            displayName: userData.displayName || userData.username || "ユーザー",
             username: userData.username || "user",
             bio: userData.introduction || "プログラミングが好きです。Next.jsとReactを勉強中です。",
             location: userData.place || "東京, 日本",

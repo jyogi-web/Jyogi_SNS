@@ -92,17 +92,17 @@ export default function UserProfilePage() {
         
         setProfile({
           id: data.id,
-          display_name: data.display_name || data.username || "ユーザー",
+          display_name: data.displayName || data.username || "ユーザー",
           username: data.username || "user",
-          bio: data.bio || "",
-          location: data.location || "",
-          website: data.website || "",
+          bio: data.introduction || "",
+          location: data.place || "",
+          website: data.site || "",
           birth_date: data.birth_date || "",
-          join_date: data.join_date || "",
+          join_date: data.created_at || "",
           icon_url: data.icon_url || undefined,
           banner_url: data.banner_url || undefined,
-          following: data.following || 0,
-          follower: data.follower || 0,
+          following: 0,
+          follower: 0,
           setID: data.setID || data.username || "user",
         });
       } catch (err) {
