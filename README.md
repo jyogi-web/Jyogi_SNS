@@ -1,264 +1,179 @@
-# Jyogi SNS
+# Jyogi SNS (じょぎSNS)
 
-Jyogi SNS は、Tikuru24 をフォークして部内利用向けに改造した SNS です。
-リアルタイム投稿、DM、通知、検索、プロフィール、AI チャット、地図投稿を 1 つのアプリに統合しています。
+Jyogi SNS は、Tikuru24 をフォークして部内利用向けに改造したプライベートSNSです。
+リアルタイム投稿、DM、通知、検索、プロフィール、地図投稿、カメラ撮影・スタンプ作成などを1つに統合したNext.jsアプリケーションです。
 
-## 重要: 24時間自動削除について
+---
 
-このリポジトリでは「投稿が 24 時間で自動削除される機能」は現在無効です。
+## ⚠️ 動作仕様と制限（現状）
 
-- 投稿は自動削除されません（手動削除のみ）
-- 24時間関連の表示やロジックが一部画面に残っています（下記参照）
-- README は「現在の実装」を優先して記載しています
+### 24時間自動削除について
+**本リポジトリでは、投稿やスタンプが24時間で自動削除される機能（TTL）は無効です。**
+- 投稿は自動削除されず、手動削除のみ可能です。
+- 過去投稿の自動クリーンアップとバックアップは、別リポジトリ（`Jyogi_SNS_backup`）で開発・運用されています。
+- **残存している24時間関連UI**: DMチャット画面 (`/messages/[userId]`) のメッセージ表示部に「砂時計アイコン」と「24時間ベースの残り時間」が表示されていますが、これはUI上の表示（残り時間計算）だけであり、**実際のDMメッセージは自動削除されません**。
 
-### 無料枠運用向けの外部開発について
+---
 
-Supabase と Cloudflare R2 の無料枠に収めるため、
-「過去投稿のDB自動削除 + バックアップ」機能は別リポジトリで開発中です。
+## 🗑️ 削除予定機能（リファクタリング対象）
 
-- 開発リポジトリ: https://github.com/tyumu/Jyogi_SNS_backup
-- 目的: ストレージ/DB容量の圧迫を抑えつつ、必要データを退避して運用継続すること
+現在コードベースに残っていますが、将来的に削除（廃止）が予定されている機能です。
 
-### 残存している24時間関連（2026-03時点）
+### 1. Glok (AIチャット) / Clock
+- **表記揺れ**: サイドバーなどのナビゲーションメニューでは「Clock」（Clockアイコン）と表記されていますが、リンク先は `/glok` （Glok機能）となっています。これらは同じAIチャット機能を指しています。
+- **関連ファイル**:
+  - `src/app/glok/*` (画面・コンポーネント・hooks)
+  - `src/app/api/gemini-api/route.ts` (API連携)
+  - `src/components/Sidebar.tsx`（ナビゲーション項目）
+  - `src/components/MobileExtendedNavigation.tsx`（ナビゲーション項目）
+  - `src/app/tutorial/data.ts`（チュートリアル定義内の `/glok`）
 
-- DMチャット画面 (`/messages/[userId]`)
-	- 各メッセージに砂時計アイコンと「24時間ベースの残り時間」を表示
-- 投稿フォーム (`PostForm`)
-	- 「24時間以内に投稿しないと制限」系のBANロジックと文言が残存
-	- モーダルにも24時間関連メッセージを表示
-- ホーム画面 (`/`)
-	- 24時間経過を前提とした期限切れチェックのデバッグログが残存（表示UIではなくログ）
+### 2. DMチャットの残り時間・砂時計表示
+- `src/app/messages/[userId]/page.tsx` に残存している、メッセージごとの残り時間表示ロジック（`getRemainingTime` など）および砂時計アイコン。
 
-注: 認証画面の「リンク期限切れ」表示は認証トークン期限の話であり、投稿TTLとは別です。
+---
 
-## 削除予定一覧（24時間関連 + Glok）
+## ✨ 実装機能一覧（現状ベース）
 
-以下は「削除予定機能」として、現時点でコード上に残っている主な箇所です。
+### 📱 SNS コア
+- **投稿作成**: テキスト、画像、ハッシュタグの投稿が可能。画像は R2 ストレージへアップロードされます。
+- **タイムライン表示**: 新着順に投稿を表示。Supabase Realtime を用いたリアルタイム連携に対応。
+- **いいね**: 投稿に対するいいね機能。楽観的更新により即座にUIに反映されます。
+- **ブックマーク**: お気に入り投稿の保存機能。
+- **リプライ**: 投稿への返信機能。スレッド形式で表示されます。
+- **スタンプリアクション**: 投稿に対するスタンプリアクション機能。
+- **投稿検索**: ハッシュタグやキーワードによる全文検索（PGroonga RPC を使用）。
+- **ユーザー検索**: 登録ユーザーの検索。
 
-### A. 24時間関連（投稿TTL/24h表示）
+### 💬 コミュニケーション
+- **DM (1対1チャット)**: ユーザー同士でのリアルタイムダイレクトメッセージ機能。
+- **通知**: いいねやリプライの受信時に通知リストへ登録、および Web Push API を利用したプッシュ通知機能。
 
-- DMチャット画面
-	- `src/app/messages/[userId]/page.tsx`
-	- 残り時間計算 (`24 * 60 * 60 * 1000`) と砂時計表示
-- 投稿フォーム
-	- `src/components/PostForm.tsx`
-	- 24時間未投稿時のBANロジック、24時間関連モーダル文言
-- ホーム画面
-	- `src/app/page.tsx`
-	- 24時間経過チェックのデバッグログ（表示UIではなくログ）
+### 🗺️ 拡張機能
+- **Map (スポット投稿)**: Google Maps API を連携し、地図上に位置情報付きのスポット投稿やいいねができる機能。
+- **ニュース表示**: ニュースフィードを取得し、サイドバー（または検索画面）に表示。
+- **REALction (カメラ投稿)**: カメラで撮影した画像を即時アップロードして共有する機能。
+- **Reactions (スタンプ作成)**: キャンバス上に自由に描いたイラストまたは画像をアップロードしてスタンプとして共有する機能。
+- **Glok (AIチャット)**: Gemini API を用いたAIアシスタント対話機能（※削除予定）。
 
-### B. Glok（AIチャット）
+---
 
-- 画面本体/配下実装
-	- `src/app/glok/page.tsx`
-	- `src/app/glok/types.ts`
-	- `src/app/glok/components/*`
-	- `src/app/glok/hooks/*`
-	- `src/app/glok/globals.css`
-- API連携
-	- `src/app/api/gemini-api/route.ts`
-- 他画面からの参照
-	- `src/components/Sidebar.tsx`（`/glok` ナビ項目）
-	- `src/components/MobileExtendedNavigation.tsx`（`/glok` ナビ項目）
-	- `src/app/tutorial/data.ts`（Glokチュートリアル定義）
+## 🛤️ 主要画面ルート
 
-### 補足
+- `/` : ホーム（タイムライン、新規投稿、タブ切り替え [新着 / 成果物紹介ch]）
+- `/auth/login`, `/auth/signup`, `/auth/reset-password`, `/auth/verify` : 認証関連
+- `/messages`, `/messages/[userId]` : DM一覧 / 個別チャット
+- `/notifications` : 通知一覧
+- `/bookmarks` : ブックマーク一覧
+- `/search` : 投稿およびトレンド、ニュースの検索
+- `/gallery` : REALction や Reactions の画像一覧ギャラリー
+- `/profile`, `/profile/[userId]` : ユーザープロフィール表示・編集
+- `/settings` : 通知設定等の環境設定
+- `/glok` : AIチャット（Clock） ※削除予定
+- `/map` : スポット地図投稿
+- `/realction` : REALction（カメラ投稿）
+- `/reactions` : Reactions（スタンプ）
+- `/tutorial`, `/tutorial/[feature]`, `/tutorial/complete` : チュートリアル画面
 
-- この一覧は「削除対象の棚卸し」です。
-- 実際の削除時は、画面本体だけでなくナビゲーション・チュートリアル・関連API・補助スクリプトの参照切れを同時に解消してください。
+---
 
-## 実装機能一覧（現状ベース）
+## 🔗 主要 API エンドポイント
 
-### SNS コア
-
-| 機能 | 状態 | 備考 |
+| メソッド | パス | 用途 |
 |---|---|---|
-| 投稿作成（テキスト/画像/タグ） | 実装済み | 画像は `/api/upload` 経由で R2 に保存 |
-| タイムライン表示 | 実装済み | `todos` を新着順で表示、Realtime 連携あり |
-| いいね | 実装済み | `likes` と `todos.likes` を更新 |
-| ブックマーク | 実装済み | `bookmarks` の on/off 管理 |
-| リプライ | 実装済み | `replies` へ保存、楽観的更新あり |
-| スタンプリアクション | 実装済み | `stamp` と `make_stamp` を利用 |
-| 投稿検索 | 実装済み | `/api/search` + Supabase RPC `search_todos_pgroonga` |
-| ユーザー検索 | 実装済み | DM画面・検索画面でユーザー一覧を利用 |
+| `GET` | `/api/news` | RSS ニュースの取得（キャッシュ制御・フォールバックあり） |
+| `GET` | `/api/search` | 投稿検索（PGroonga RPC） |
+| `POST` | `/api/gemini-api` | AI応答生成 ※削除予定 |
+| `POST` | `/api/send-notification` | Web Push 通知送信（個別） |
+| `POST` | `/api/send-like-notification` | いいね通知の作成とPush通知の送信 |
+| `GET` | `/api/vapid-public-key` | VAPID公開鍵の返却 |
+| `POST` | `/api/upload` | 投稿用の画像アップロード（Cloudflare R2） |
+| `POST` | `/api/upload-reaction` | リアクション用の画像アップロード |
+| `GET`/`POST` | `/api/upload-stamp` | スタンプ一覧の取得およびアップロード |
+| `GET` | `/api/stamp-url` | スタンプ取得用のS3署名URL発行 |
+| `GET` | `/api/realction/[id]` | REALction画像バイナリの取得 |
+| `POST` | `/api/upload-icon` | ユーザーアイコンのアップロード（Cloudflare R2） |
 
-### コミュニケーション
+---
 
-| 機能 | 状態 | 備考 |
-|---|---|---|
-| 通知一覧 | 実装済み | `notifications` を取得し既読管理 |
-| プッシュ通知 | 実装済み | `push_subscriptions` と Web Push API |
-| いいね通知送信 | 実装済み | `/api/send-like-notification` |
-| DM（1対1） | 実装済み | `messages` テーブル + Realtime |
-| DM 一覧UI | 部分実装 | 一覧画面に「準備中」表現が一部残存 |
+## 🛠️ 技術スタック
 
-### 拡張機能
+- **フロントエンド**: Next.js 16.1.6 (App Router), React 19.1.0, TypeScript 5.x
+- **スタイリング**: Tailwind CSS 4.0.0
+- **BaaS / データベース**: Supabase (Auth / Postgres / Realtime)
+- **オブジェクトストレージ**: Cloudflare R2 (@aws-sdk/client-s3 を使用)
+- **AI / LLM**: Google Gemini API (@google/genai, @google/generative-ai)
+- **地図**: Google Maps JavaScript API (@googlemaps/js-api-loader)
+- **プッシュ通知**: Service Worker + Web Push API
 
-| 機能 | 状態 | 備考 |
-|---|---|---|
-| Glok（AIチャット） | 実装済み | `/api/gemini-api`、履歴は localStorage |
-| Map（スポット投稿） | 実装済み | Google Maps API 利用、投稿・いいね対応 |
-| ニュース表示 | 実装済み | `/api/news` で RSS 取得（失敗時フォールバック） |
-| REALction（カメラ投稿） | 実装済み | カメラ撮影/アップロード、ギャラリー連携 |
-| Reactions（お絵描き） | 実装済み | キャンバス描画 + 画像アップロード |
+---
 
-## 主要画面ルート
+## ⚙️ 環境変数セットアップ
 
-- `/` ホーム
-- `/auth/login`, `/auth/signup`, `/auth/reset-password`, `/auth/verify`
-- `/messages`, `/messages/[userId]`
-- `/notifications`
-- `/bookmarks`
-- `/search`
-- `/gallery`
-- `/profile`, `/profile/[userId]`
-- `/settings`
-- `/glok`
-- `/map`
-- `/realction`
-- `/reactions`
-- `/tutorial`, `/tutorial/[feature]`, `/tutorial/complete`
-
-## API エンドポイント
-
-| Method | Path | 用途 |
-|---|---|---|
-| GET | `/api/news` | RSS ニュース取得 |
-| GET | `/api/search` | 投稿検索（PGroonga RPC） |
-| POST | `/api/gemini-api` | AI 応答生成 |
-| POST | `/api/send-notification` | Web Push 通知送信 |
-| POST | `/api/send-like-notification` | いいね通知作成 + Push |
-| GET | `/api/vapid-public-key` | VAPID 公開鍵返却 |
-| POST | `/api/upload` | 画像アップロード（R2） |
-| POST | `/api/upload-reaction` | リアクション画像アップロード |
-| GET/POST | `/api/upload-stamp` | スタンプ一覧/アップロード |
-| GET | `/api/stamp-url` | スタンプ取得用署名URL |
-| GET | `/api/realction/[id]` | REALction画像バイナリ取得 |
-| POST | `/api/upload-icon` | アイコンアップロードAPI（プレースホルダ設定、運用前要調整） |
-
-## 技術スタック
-
-| カテゴリ | 採用技術 |
-|---|---|
-| フロントエンド | Next.js 16 (App Router), React 19, TypeScript 5 |
-| スタイリング | Tailwind CSS 4 |
-| BaaS | Supabase (Auth / Postgres / Realtime / Storage) |
-| ストレージ | Cloudflare R2 |
-| AI | Google Gemini API |
-| 地図 | Google Maps JavaScript API |
-| 通知 | Service Worker + Web Push |
-## セットアップ
-
-### 前提
-
-- Node.js 18 以上（推奨 20 以上）
-- npm
-- Supabase プロジェクト
-- Cloudflare R2
-
-### インストール
-
-```bash
-npm install
-```
-
-### 環境変数
-
-ルートに `.env.local` を作成し、少なくとも以下を設定してください。
+ローカル開発環境で動作させるには、プロジェクトルートに `.env.local` ファイルを作成し、以下の変数を定義してください。
 
 ```env
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
-# Gemini
-GEMINI_API_KEY=
+# Gemini API (Glok機能で使用)
+GEMINI_API_KEY=your_gemini_api_key
 
-# Maps
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=
+# Google Maps
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 NEXT_PUBLIC_DEFAULT_CENTER=35.681236,139.767125
 NEXT_PUBLIC_MAPS_LANG=ja
 NEXT_PUBLIC_MAPS_REGION=JP
 
-# R2 (実装は R2_TEMP_* を参照)
-R2_TEMP_ENDPOINT=
-R2_TEMP_ACCESS_KEY_ID=
-R2_TEMP_SECRET_ACCESS_KEY=
-R2_TEMP_BUCKET_NAME=
+# Cloudflare R2 (S3互換)
+R2_TEMP_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+R2_TEMP_ACCESS_KEY_ID=your_access_key_id
+R2_TEMP_SECRET_ACCESS_KEY=your_secret_access_key
+R2_TEMP_BUCKET_NAME=your_bucket_name
+NEXT_PUBLIC_R2_PUBLIC_URL=https://pub-xxxxxx.r2.dev
 
-# Web Push
-NEXT_PUBLIC_VAPID_KEY=
-VAPID_PRIVATE_KEY=
-
-# Optional
-LOG_LEVEL=INFO
+# Web Push (VAPID)
+NEXT_PUBLIC_VAPID_KEY=your_vapid_public_key
+VAPID_PRIVATE_KEY=your_vapid_private_key
 ```
 
-### 起動
+---
 
+## 🚀 起動とビルド
+
+### 1. 依存パッケージのインストール
+```bash
+npm install
+```
+
+### 2. 開発サーバーの起動 (Turbopack 有効)
 ```bash
 npm run dev
 ```
+起動後、ブラウザで [http://localhost:3000](http://localhost:3000) を開いてください。
 
-ブラウザで `http://localhost:3000` を開いてください。
-
-### ビルド
-
+### 3. プロダクションビルドと実行
 ```bash
 npm run build
 npm run start
 ```
 
-## 新規共同開発者向けガイド
+---
 
-### 0. 最初に読むファイル
+## 📂 データベーステーブル構造（主要）
 
-- `README.md`（このファイル）
-- `docs/01_feature-list.md` 〜 `docs/09_schedule_and_issues.md`
-- `docs/create_tables.sql`（DB 初期構築の参考）
-
-### 1. 初日セットアップ手順
-
-1. リポジトリを clone して `npm install` を実行
-2. `.env.local` を作成し、上記環境変数を設定
-3. `npm run dev` で起動
-4. ログイン/サインアップ、投稿、いいね、DM、通知画面を一通り確認
-
-### 2. 実装確認の最低チェックリスト
-
-- ログイン/ログアウトできる
-- ホームで投稿作成・いいね・ブックマーク・リプライができる
-- 検索タブで検索できる
-- DM 送受信できる
-- 通知一覧が取得できる
-- 設定画面で通知設定を保存できる
-
-### 3. 日常開発コマンド
-
-```bash
-npm run dev
-npm run lint
-npm run build
-```
-
-## データモデル（主要テーブル）
-
-- `usels` ユーザープロフィール
-- `todos` 投稿
-- `likes` いいね
-- `bookmarks` ブックマーク
-- `replies` リプライ
-- `stamp` / `make_stamp` スタンプ
-- `notifications` 通知
-- `notification_settings` 通知設定
-- `push_subscriptions` Push 購読情報
-- `messages` DM
-- `follows` フォロー
-- `realction` リアクション画像
-
-## 現在の注意点
-
-- 24時間自動削除は無効です（削除は手動）
-- 24時間関連の残存は「DM残り時間表示」「投稿フォームの24時間BAN文言/ロジック」「ホームのデバッグログ」です
-- `/api/upload-icon` はプレースホルダ定数が残っているため、運用前に実値へ置換が必要です
+- `usels` : ユーザープロフィール情報（表示名、ID、紹介文、アイコンURL）
+- `todos` : 投稿データ（タイトル、作成日時、タグ、R2画像URL）
+- `likes` : いいねの紐付けデータ
+- `bookmarks` : ブックマークの紐付けデータ
+- `replies` : 投稿に対するリプライデータ
+- `stamp` : 投稿に対するスタンプリアクションの記録
+- `make_stamp` : ユーザーが作成したカスタムスタンプデータ
+- `notifications` : システムおよびアクション通知
+- `notification_settings` : ユーザーごとの通知設定
+- `push_subscriptions` : プッシュ通知用のWeb Push購読情報
+- `messages` : DMメッセージ（送信者、受信者、本文、作成日時）
+- `follows` : フォロー・フォロワー関係データ
+- `realction` : REALction機能でアップロードされた画像データ
